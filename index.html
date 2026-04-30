@@ -9,8 +9,8 @@
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    html,body,#root{height:100%}
-    body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+    html,body,#root{min-height:100%}
+    body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
   </style>
 </head>
 <body>
@@ -26,42 +26,92 @@
 
 // ---------- NUTRIENT DEFINITIONS ----------
 // type: 'pct' = g/100g stored as %, 'mgkg' = mg/kg ingredient, 'IUkg' = IU/kg ingredient
+// ============================================================
+//  AI ENDPOINT — uses /api/ai-proxy on production (with secret key)
+//  Falls back to direct API (works only in preview environments)
+// ============================================================
+const AI_ENDPOINT = (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname !== 'localhost' && !window.location.hostname.includes('claude'))
+  ? '/api/ai-proxy'
+  : 'https://api.anthropic.com/v1/messages';
+
+async function callAI(payload) {
+  // Try the configured endpoint first
+  try {
+    const res = await fetch(AI_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`AI server returned ${res.status}: ${errText.substring(0, 200)}`);
+    }
+    return await res.json();
+  } catch (e) {
+    // If the proxy isn't deployed yet (404 or network error), give a clear message
+    if (AI_ENDPOINT === '/api/ai-proxy') {
+      throw new Error('AI service not configured. The /api/ai-proxy endpoint is missing on this server. See PRODUCTION-SETUP.md for deployment instructions, or run this in preview mode.');
+    }
+    // For preview/dev environments, the direct call may fail due to CORS
+    throw new Error('AI service unavailable: ' + e.message + '. In production, deploy the /api/ai-proxy serverless function (see PRODUCTION-SETUP.md).');
+  }
+}
+
 const N = [
   { k:'protein',         l:'Crude Protein',        u:'%',      t:'pct',  cat:'Proximate'     },
   { k:'fat',             l:'Crude Fat',             u:'%',      t:'pct',  cat:'Proximate'     },
   { k:'fiber',           l:'Crude Fiber',           u:'%',      t:'pct',  cat:'Proximate'     },
   { k:'moisture',        l:'Moisture',              u:'%',      t:'pct',  cat:'Proximate'     },
   { k:'ash',             l:'Ash',                   u:'%',      t:'pct',  cat:'Proximate'     },
+  { k:'starch',          l:'Starch (Digestible Carbs)', u:'%',  t:'pct',  cat:'Proximate'     },
+  { k:'solubleFiber',    l:'Soluble Fiber',         u:'%',      t:'pct',  cat:'Proximate'     },
   { k:'calcium',         l:'Calcium',               u:'%',      t:'pct',  cat:'Minerals'      },
   { k:'phosphorus',      l:'Phosphorus',            u:'%',      t:'pct',  cat:'Minerals'      },
   { k:'potassium',       l:'Potassium',             u:'%',      t:'pct',  cat:'Minerals'      },
   { k:'sodium',          l:'Sodium',                u:'%',      t:'pct',  cat:'Minerals'      },
   { k:'chloride',        l:'Chloride',              u:'%',      t:'pct',  cat:'Minerals'      },
   { k:'magnesium',       l:'Magnesium',             u:'%',      t:'pct',  cat:'Minerals'      },
+  { k:'sulfur',          l:'Sulfur',                u:'%',      t:'pct',  cat:'Minerals'      },
   { k:'iron',            l:'Iron',                  u:'mg/kg',  t:'mgkg', cat:'Trace Minerals'},
   { k:'copper',          l:'Copper',                u:'mg/kg',  t:'mgkg', cat:'Trace Minerals'},
   { k:'manganese',       l:'Manganese',             u:'mg/kg',  t:'mgkg', cat:'Trace Minerals'},
   { k:'zinc',            l:'Zinc',                  u:'mg/kg',  t:'mgkg', cat:'Trace Minerals'},
   { k:'iodine',          l:'Iodine',                u:'mg/kg',  t:'mgkg', cat:'Trace Minerals'},
   { k:'selenium',        l:'Selenium',              u:'mg/kg',  t:'mgkg', cat:'Trace Minerals'},
+  { k:'cobalt',          l:'Cobalt',                u:'mg/kg',  t:'mgkg', cat:'Trace Minerals'},
   { k:'vitaminA',        l:'Vitamin A',             u:'IU/kg',  t:'IUkg', cat:'Vitamins'      },
   { k:'vitaminD',        l:'Vitamin D',             u:'IU/kg',  t:'IUkg', cat:'Vitamins'      },
   { k:'vitaminE',        l:'Vitamin E',             u:'IU/kg',  t:'IUkg', cat:'Vitamins'      },
+  { k:'vitaminK',        l:'Vitamin K',             u:'mg/kg',  t:'mgkg', cat:'Vitamins'      },
   { k:'thiamine',        l:'Thiamine (B1)',          u:'mg/kg',  t:'mgkg', cat:'Vitamins'      },
   { k:'riboflavin',      l:'Riboflavin (B2)',        u:'mg/kg',  t:'mgkg', cat:'Vitamins'      },
   { k:'niacin',          l:'Niacin (B3)',            u:'mg/kg',  t:'mgkg', cat:'Vitamins'      },
   { k:'pantothenicAcid', l:'Pantothenic Acid (B5)', u:'mg/kg',  t:'mgkg', cat:'Vitamins'      },
   { k:'vitaminB6',       l:'Vitamin B6',            u:'mg/kg',  t:'mgkg', cat:'Vitamins'      },
-  { k:'folicAcid',       l:'Folic Acid',            u:'mg/kg',  t:'mgkg', cat:'Vitamins'      },
+  { k:'biotin',          l:'Biotin (B7)',           u:'mg/kg',  t:'mgkg', cat:'Vitamins'      },
+  { k:'folicAcid',       l:'Folic Acid (B9)',       u:'mg/kg',  t:'mgkg', cat:'Vitamins'      },
   { k:'vitaminB12',      l:'Vitamin B12',           u:'mg/kg',  t:'mgkg', cat:'Vitamins'      },
   { k:'choline',         l:'Choline',               u:'mg/kg',  t:'mgkg', cat:'Vitamins'      },
-  { k:'linoleicAcid',    l:'Linoleic Acid (ω-6)',   u:'%',      t:'pct',  cat:'Fatty Acids'   },
-  { k:'alphaLinolenic',  l:'ALA (ω-3)',             u:'%',      t:'pct',  cat:'Fatty Acids'   },
+  { k:'vitaminC',        l:'Vitamin C',             u:'mg/kg',  t:'mgkg', cat:'Vitamins'      },
+  { k:'linoleicAcid',    l:'Linoleic Acid (ω-6 LA)',u:'%',      t:'pct',  cat:'Fatty Acids'   },
+  { k:'alphaLinolenic',  l:'α-Linolenic Acid (ω-3 ALA)',u:'%',  t:'pct',  cat:'Fatty Acids'   },
+  { k:'arachidonicAcid', l:'Arachidonic Acid (AA, ω-6)',u:'%',  t:'pct',  cat:'Fatty Acids'   },
+  { k:'epa',             l:'EPA (ω-3)',             u:'%',      t:'pct',  cat:'Fatty Acids'   },
+  { k:'dha',             l:'DHA (ω-3)',             u:'%',      t:'pct',  cat:'Fatty Acids'   },
+  { k:'epaDhaCombined',  l:'EPA + DHA combined',    u:'%',      t:'pct',  cat:'Fatty Acids'   },
   { k:'taurine',         l:'Taurine',               u:'%',      t:'pct',  cat:'Amino Acids'   },
   { k:'arginine',        l:'Arginine',              u:'%',      t:'pct',  cat:'Amino Acids'   },
   { k:'methionine',      l:'Methionine',            u:'%',      t:'pct',  cat:'Amino Acids'   },
+  { k:'methionineCystine',l:'Methionine + Cystine', u:'%',      t:'pct',  cat:'Amino Acids'   },
   { k:'lysine',          l:'Lysine',                u:'%',      t:'pct',  cat:'Amino Acids'   },
   { k:'tryptophan',      l:'Tryptophan',            u:'%',      t:'pct',  cat:'Amino Acids'   },
+  { k:'threonine',       l:'Threonine',             u:'%',      t:'pct',  cat:'Amino Acids'   },
+  { k:'leucine',         l:'Leucine',               u:'%',      t:'pct',  cat:'Amino Acids'   },
+  { k:'isoleucine',      l:'Isoleucine',            u:'%',      t:'pct',  cat:'Amino Acids'   },
+  { k:'valine',          l:'Valine',                u:'%',      t:'pct',  cat:'Amino Acids'   },
+  { k:'histidine',       l:'Histidine',             u:'%',      t:'pct',  cat:'Amino Acids'   },
+  { k:'phenylalanine',   l:'Phenylalanine',         u:'%',      t:'pct',  cat:'Amino Acids'   },
+  { k:'phenylTyrosine',  l:'Phenyl + Tyrosine',     u:'%',      t:'pct',  cat:'Amino Acids'   },
 ];
 
 // ---------- INGREDIENT DATABASE ----------
@@ -75,258 +125,258 @@ const ING_DB = [
     n:{ protein:65,fat:12,fiber:1,moisture:8,ash:16,calcium:4.5,phosphorus:2.5,potassium:0.7,sodium:0.5,chloride:0.6,magnesium:0.1,
         iron:200,copper:8,manganese:20,zinc:90,iodine:0.5,selenium:0.8,
         vitaminA:0,vitaminD:0,vitaminE:50,thiamine:20,riboflavin:60,niacin:700,pantothenicAcid:80,vitaminB6:30,folicAcid:4,vitaminB12:0.2,choline:1500,
-        linoleicAcid:1.5,alphaLinolenic:0.1,taurine:0.04,arginine:4.0,methionine:1.5,lysine:4.5,tryptophan:0.5,kcal:440 }},
+        linoleicAcid:1.5,alphaLinolenic:0.1,taurine:0.04,arginine:4.0,methionine:1.5,lysine:4.5,tryptophan:0.5,epa:0.05,dha:0.1,arachidonicAcid:0.6,biotin:0.2,vitaminK:0.1,starch:0,solubleFiber:0,sulfur:0.55,cobalt:0.04,vitaminC:0,methionineCystine:2.5,threonine:2.7,leucine:4.7,isoleucine:2.9,valine:3.2,histidine:1.4,phenylalanine:2.6,phenylTyrosine:4.3,epaDhaCombined:0.15000000000000002,kcal:440 }},
   { id:'beef_meal', name:'Beef Meal', cat:'Proteins', color:'#dc2626', cost:2.8,
     n:{ protein:56,fat:10,fiber:1,moisture:8,ash:22,calcium:8.5,phosphorus:4.5,potassium:0.5,sodium:0.6,chloride:0.8,magnesium:0.15,
         iron:350,copper:9,manganese:10,zinc:120,iodine:0.3,selenium:0.7,
         vitaminA:0,vitaminD:0,vitaminE:30,thiamine:10,riboflavin:50,niacin:600,pantothenicAcid:50,vitaminB6:20,folicAcid:3,vitaminB12:0.3,choline:1200,
-        linoleicAcid:0.8,alphaLinolenic:0.05,taurine:0.05,arginine:3.5,methionine:1.2,lysine:3.8,tryptophan:0.4,kcal:410 }},
+        linoleicAcid:0.8,alphaLinolenic:0.05,taurine:0.05,arginine:3.5,methionine:1.2,lysine:3.8,tryptophan:0.4,epa:0.02,dha:0.05,arachidonicAcid:0.3,biotin:0.1,vitaminK:0.05,starch:0,solubleFiber:0,sulfur:0.45,cobalt:0.04,vitaminC:0,methionineCystine:2.0,threonine:2.4,leucine:4.2,isoleucine:2.6,valine:2.9,histidine:1.3,phenylalanine:2.3,phenylTyrosine:3.8,epaDhaCombined:0.07,kcal:410 }},
   { id:'fish_meal', name:'Fish Meal (Menhaden)', cat:'Proteins', color:'#0ea5e9', cost:3.0,
     n:{ protein:60,fat:9,fiber:0.5,moisture:8,ash:18,calcium:5.5,phosphorus:3.0,potassium:0.8,sodium:0.8,chloride:1.0,magnesium:0.18,
         iron:220,copper:6,manganese:10,zinc:130,iodine:4,selenium:2.5,
         vitaminA:0,vitaminD:20000,vitaminE:20,thiamine:5,riboflavin:70,niacin:800,pantothenicAcid:50,vitaminB6:20,folicAcid:2,vitaminB12:1.0,choline:3000,
-        linoleicAcid:0.5,alphaLinolenic:0.3,taurine:0.35,arginine:3.5,methionine:1.8,lysine:5.0,tryptophan:0.4,kcal:400 }},
+        linoleicAcid:0.5,alphaLinolenic:0.3,taurine:0.35,arginine:3.5,methionine:1.8,lysine:5.0,tryptophan:0.4,epa:0.8,dha:1.2,arachidonicAcid:0.05,biotin:0.1,vitaminK:0.5,starch:0,solubleFiber:0,sulfur:0.4,cobalt:0.05,vitaminC:0,methionineCystine:2.4,threonine:2.5,leucine:4.5,isoleucine:2.7,valine:3.0,histidine:1.4,phenylalanine:2.4,phenylTyrosine:4.0,epaDhaCombined:2.0,kcal:400 }},
   { id:'lamb_meal', name:'Lamb Meal', cat:'Proteins', color:'#84cc16', cost:3.5,
     n:{ protein:58,fat:15,fiber:1,moisture:8,ash:18,calcium:7.5,phosphorus:3.8,potassium:0.5,sodium:0.5,chloride:0.7,magnesium:0.15,
         iron:180,copper:12,manganese:15,zinc:100,iodine:0.3,selenium:0.5,
         vitaminA:0,vitaminD:0,vitaminE:30,thiamine:15,riboflavin:40,niacin:600,pantothenicAcid:60,vitaminB6:25,folicAcid:3,vitaminB12:0.25,choline:1300,
-        linoleicAcid:2.5,alphaLinolenic:0.2,taurine:0.03,arginine:3.8,methionine:1.2,lysine:4.2,tryptophan:0.45,kcal:430 }},
+        linoleicAcid:2.5,alphaLinolenic:0.2,taurine:0.03,arginine:3.8,methionine:1.2,lysine:4.2,tryptophan:0.45,epa:0.05,dha:0.05,arachidonicAcid:0.3,biotin:0.1,vitaminK:0.1,starch:0,solubleFiber:0,sulfur:0.45,cobalt:0.04,vitaminC:0,methionineCystine:2.1,threonine:2.4,leucine:4.3,isoleucine:2.6,valine:2.9,histidine:1.3,phenylalanine:2.3,phenylTyrosine:3.9,epaDhaCombined:0.1,kcal:430 }},
   { id:'pea_protein', name:'Pea Protein Concentrate', cat:'Proteins', color:'#22c55e', cost:2.0,
     n:{ protein:82,fat:2,fiber:3,moisture:8,ash:4,calcium:0.2,phosphorus:0.7,potassium:1.5,sodium:0.4,chloride:0.3,magnesium:0.15,
         iron:80,copper:7,manganese:12,zinc:40,iodine:0.1,selenium:0.1,
         vitaminA:0,vitaminD:0,vitaminE:10,thiamine:5,riboflavin:5,niacin:30,pantothenicAcid:15,vitaminB6:10,folicAcid:1,vitaminB12:0,choline:1000,
-        linoleicAcid:0.5,alphaLinolenic:0.1,taurine:0,arginine:7.5,methionine:0.5,lysine:7.0,tryptophan:0.8,kcal:360 }},
+        linoleicAcid:0.5,alphaLinolenic:0.1,taurine:0,arginine:7.5,methionine:0.5,lysine:7.0,tryptophan:0.8,epa:0,dha:0,arachidonicAcid:0,biotin:0.05,vitaminK:0.1,starch:5,solubleFiber:3,sulfur:0.4,cobalt:0.02,vitaminC:1,methionineCystine:1.0,threonine:3.0,leucine:6.5,isoleucine:3.7,valine:4.0,histidine:2.0,phenylalanine:4.5,phenylTyrosine:7.5,epaDhaCombined:0,kcal:360 }},
   { id:'chicken_fresh', name:'Chicken (Fresh)', cat:'Proteins', color:'#fbbf24', cost:3.2,
     n:{ protein:18,fat:9,fiber:0,moisture:72,ash:1,calcium:0.01,phosphorus:0.17,potassium:0.26,sodium:0.07,chloride:0.1,magnesium:0.02,
         iron:15,copper:0.7,manganese:0.3,zinc:18,iodine:0.05,selenium:0.22,
         vitaminA:0,vitaminD:0,vitaminE:5,thiamine:7,riboflavin:15,niacin:900,pantothenicAcid:30,vitaminB6:10,folicAcid:0.5,vitaminB12:0.1,choline:700,
-        linoleicAcid:0.8,alphaLinolenic:0.05,taurine:0.003,arginine:1.3,methionine:0.5,lysine:1.6,tryptophan:0.2,kcal:165 }},
+        linoleicAcid:0.8,alphaLinolenic:0.05,taurine:0.003,arginine:1.3,methionine:0.5,lysine:1.6,tryptophan:0.2,epa:0.03,dha:0.05,arachidonicAcid:0.3,biotin:0.1,vitaminK:0.05,starch:0,solubleFiber:0,sulfur:0.3,cobalt:0.02,vitaminC:0,methionineCystine:1.0,threonine:1.0,leucine:1.8,isoleucine:1.1,valine:1.2,histidine:0.6,phenylalanine:1.0,phenylTyrosine:1.7,epaDhaCombined:0.08,kcal:165 }},
   { id:'ground_corn', name:'Ground Corn (Maize)', cat:'Grains & Carbs', color:'#eab308', cost:0.5,
     n:{ protein:8.5,fat:3.5,fiber:2,moisture:12,ash:1.5,calcium:0.02,phosphorus:0.25,potassium:0.37,sodium:0.02,chloride:0.05,magnesium:0.1,
         iron:30,copper:2,manganese:5,zinc:22,iodine:0.05,selenium:0.1,
         vitaminA:0,vitaminD:0,vitaminE:15,thiamine:36,riboflavin:14,niacin:260,pantothenicAcid:50,vitaminB6:70,folicAcid:2,vitaminB12:0,choline:500,
-        linoleicAcid:2.2,alphaLinolenic:0.08,taurine:0,arginine:0.4,methionine:0.2,lysine:0.25,tryptophan:0.07,kcal:360 }},
+        linoleicAcid:2.2,alphaLinolenic:0.08,taurine:0,arginine:0.4,methionine:0.2,lysine:0.25,tryptophan:0.07,epa:0,dha:0,arachidonicAcid:0,biotin:0.06,vitaminK:0.05,starch:70,solubleFiber:1,sulfur:0.12,cobalt:0.01,vitaminC:0,methionineCystine:0.4,threonine:0.36,leucine:1.2,isoleucine:0.36,valine:0.46,histidine:0.27,phenylalanine:0.44,phenylTyrosine:0.76,epaDhaCombined:0,kcal:360 }},
   { id:'brown_rice', name:'Brown Rice', cat:'Grains & Carbs', color:'#a16207', cost:0.8,
     n:{ protein:7.5,fat:2.7,fiber:3.5,moisture:11,ash:1.5,calcium:0.03,phosphorus:0.22,potassium:0.22,sodium:0.02,chloride:0.04,magnesium:0.11,
         iron:21,copper:3,manganese:17,zinc:15,iodine:0.05,selenium:0.12,
         vitaminA:0,vitaminD:0,vitaminE:10,thiamine:35,riboflavin:5,niacin:500,pantothenicAcid:100,vitaminB6:50,folicAcid:1,vitaminB12:0,choline:400,
-        linoleicAcid:0.8,alphaLinolenic:0.03,taurine:0,arginine:0.5,methionine:0.2,lysine:0.3,tryptophan:0.1,kcal:350 }},
+        linoleicAcid:0.8,alphaLinolenic:0.03,taurine:0,arginine:0.5,methionine:0.2,lysine:0.3,tryptophan:0.1,epa:0,dha:0,arachidonicAcid:0,biotin:0.06,vitaminK:0,starch:75,solubleFiber:1,sulfur:0.07,cobalt:0.01,vitaminC:0,methionineCystine:0.31,threonine:0.3,leucine:0.66,isoleucine:0.34,valine:0.49,histidine:0.21,phenylalanine:0.41,phenylTyrosine:0.78,epaDhaCombined:0,kcal:350 }},
   { id:'oats', name:'Oats (Rolled)', cat:'Grains & Carbs', color:'#d97706', cost:0.7,
     n:{ protein:16.9,fat:7,fiber:11,moisture:8.7,ash:2,calcium:0.08,phosphorus:0.52,potassium:0.45,sodium:0.02,chloride:0.06,magnesium:0.18,
         iron:62,copper:4,manganese:46,zinc:40,iodine:0.05,selenium:0.23,
         vitaminA:0,vitaminD:0,vitaminE:15,thiamine:70,riboflavin:15,niacin:200,pantothenicAcid:120,vitaminB6:11,folicAcid:0.6,vitaminB12:0,choline:1500,
-        linoleicAcid:2.5,alphaLinolenic:0.1,taurine:0,arginine:0.9,methionine:0.3,lysine:0.65,tryptophan:0.23,kcal:389 }},
+        linoleicAcid:2.5,alphaLinolenic:0.1,taurine:0,arginine:0.9,methionine:0.3,lysine:0.65,tryptophan:0.23,epa:0,dha:0,arachidonicAcid:0,biotin:0.2,vitaminK:0.05,starch:55,solubleFiber:4,sulfur:0.18,cobalt:0.01,vitaminC:0,methionineCystine:0.6,threonine:0.45,leucine:1.0,isoleucine:0.5,valine:0.7,histidine:0.3,phenylalanine:0.7,phenylTyrosine:1.2,epaDhaCombined:0,kcal:389 }},
   { id:'sweet_potato', name:'Sweet Potato (Dried)', cat:'Grains & Carbs', color:'#f97316', cost:1.5,
     n:{ protein:6,fat:0.5,fiber:5,moisture:12,ash:3,calcium:0.1,phosphorus:0.1,potassium:1.4,sodium:0.04,chloride:0.06,magnesium:0.06,
         iron:20,copper:3,manganese:7,zinc:8,iodine:0.1,selenium:0.05,
         vitaminA:50000,vitaminD:0,vitaminE:30,thiamine:25,riboflavin:10,niacin:150,pantothenicAcid:80,vitaminB6:70,folicAcid:1,vitaminB12:0,choline:250,
-        linoleicAcid:0.1,alphaLinolenic:0.02,taurine:0,arginine:0.2,methionine:0.04,lysine:0.18,tryptophan:0.05,kcal:290 }},
+        linoleicAcid:0.1,alphaLinolenic:0.02,taurine:0,arginine:0.2,methionine:0.04,lysine:0.18,tryptophan:0.05,epa:0,dha:0,arachidonicAcid:0,biotin:0.05,vitaminK:0.02,starch:70,solubleFiber:3,sulfur:0.05,cobalt:0.01,vitaminC:10,methionineCystine:0.1,threonine:0.1,leucine:0.15,isoleucine:0.1,valine:0.13,histidine:0.05,phenylalanine:0.12,phenylTyrosine:0.2,epaDhaCombined:0,kcal:290 }},
   { id:'turkey_meal', name:'Turkey Meal', cat:'Proteins', color:'#d97706', cost:2.8,
     n:{ protein:62,fat:14,fiber:1,moisture:7,ash:15,calcium:4.0,phosphorus:2.2,potassium:0.6,sodium:0.5,chloride:0.6,magnesium:0.1,
         iron:180,copper:7,manganese:18,zinc:85,iodine:0.4,selenium:0.7,
         vitaminA:0,vitaminD:0,vitaminE:45,thiamine:18,riboflavin:55,niacin:680,pantothenicAcid:75,vitaminB6:28,folicAcid:3.5,vitaminB12:0.2,choline:1400,
-        linoleicAcid:2.0,alphaLinolenic:0.15,taurine:0.04,arginine:3.8,methionine:1.4,lysine:4.3,tryptophan:0.48,kcal:435 }},
+        linoleicAcid:2.0,alphaLinolenic:0.15,taurine:0.04,arginine:3.8,methionine:1.4,lysine:4.3,tryptophan:0.48,epa:0.05,dha:0.1,arachidonicAcid:0.5,biotin:0.18,vitaminK:0.1,starch:0,solubleFiber:0,sulfur:0.5,cobalt:0.04,vitaminC:0,methionineCystine:2.4,threonine:2.6,leucine:4.5,isoleucine:2.8,valine:3.1,histidine:1.3,phenylalanine:2.5,phenylTyrosine:4.1,epaDhaCombined:0.15000000000000002,kcal:435 }},
   { id:'egg_powder', name:'Whole Egg Powder', cat:'Proteins', color:'#fbbf24', cost:5.5,
     n:{ protein:47,fat:41,fiber:0,moisture:3,ash:4,calcium:0.22,phosphorus:0.77,potassium:0.5,sodium:0.55,chloride:0.65,magnesium:0.05,
         iron:45,copper:3,manganese:2,zinc:52,iodine:2.0,selenium:1.6,
         vitaminA:1400,vitaminD:220,vitaminE:50,thiamine:4,riboflavin:17,niacin:1,pantothenicAcid:60,vitaminB6:5,folicAcid:1.5,vitaminB12:0.1,choline:2500,
-        linoleicAcid:4.0,alphaLinolenic:0.2,taurine:0,arginine:2.8,methionine:1.5,lysine:3.2,tryptophan:0.6,kcal:560 }},
+        linoleicAcid:4.0,alphaLinolenic:0.2,taurine:0,arginine:2.8,methionine:1.5,lysine:3.2,tryptophan:0.6,epa:0.1,dha:0.6,arachidonicAcid:0.3,biotin:1.5,vitaminK:0.3,starch:0,solubleFiber:0,sulfur:0.6,cobalt:0.05,vitaminC:0,methionineCystine:2.6,threonine:2.0,leucine:3.8,isoleucine:2.5,valine:3.0,histidine:1.1,phenylalanine:2.6,phenylTyrosine:4.4,epaDhaCombined:0.7,kcal:560 }},
   { id:'whey_protein', name:'Whey Protein Concentrate', cat:'Proteins', color:'#60a5fa', cost:4.2,
     n:{ protein:80,fat:6,fiber:0,moisture:5,ash:3,calcium:0.6,phosphorus:0.5,potassium:1.2,sodium:0.5,chloride:0.3,magnesium:0.08,
         iron:15,copper:1,manganese:0.5,zinc:10,iodine:0.1,selenium:0.1,
         vitaminA:0,vitaminD:0,vitaminE:5,thiamine:3,riboflavin:15,niacin:10,pantothenicAcid:30,vitaminB6:3,folicAcid:0.5,vitaminB12:0.05,choline:500,
-        linoleicAcid:0.3,alphaLinolenic:0.05,taurine:0,arginine:2.0,methionine:2.0,lysine:8.5,tryptophan:1.8,kcal:380 }},
+        linoleicAcid:0.3,alphaLinolenic:0.05,taurine:0,arginine:2.0,methionine:2.0,lysine:8.5,tryptophan:1.8,epa:0,dha:0,arachidonicAcid:0.05,biotin:0.2,vitaminK:0,starch:0,solubleFiber:0,sulfur:0.7,cobalt:0.01,vitaminC:0,methionineCystine:3.5,threonine:5.5,leucine:9.5,isoleucine:5.5,valine:5.0,histidine:1.7,phenylalanine:2.8,phenylTyrosine:5.6,epaDhaCombined:0,kcal:380 }},
   { id:'potato_starch', name:'Potato Starch', cat:'Grains & Carbs', color:'#a3a3a3', cost:0.9,
     n:{ protein:0.5,fat:0.1,fiber:0.5,moisture:10,ash:0.3,calcium:0.01,phosphorus:0.03,potassium:0.05,sodium:0.01,chloride:0.01,magnesium:0.01,
         iron:5,copper:0.5,manganese:1,zinc:2,iodine:0.01,selenium:0.01,
         vitaminA:0,vitaminD:0,vitaminE:0,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:350 }},
+        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:0,dha:0,arachidonicAcid:0,biotin:0,vitaminK:0,starch:85,solubleFiber:0,sulfur:0,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0,kcal:350 }},
   { id:'barley', name:'Barley (Ground)', cat:'Grains & Carbs', color:'#92400e', cost:0.6,
     n:{ protein:12.5,fat:2.3,fiber:17.3,moisture:10,ash:2.3,calcium:0.03,phosphorus:0.26,potassium:0.45,sodium:0.01,chloride:0.04,magnesium:0.13,
         iron:36,copper:5,manganese:19,zinc:29,iodine:0.05,selenium:0.38,
         vitaminA:0,vitaminD:0,vitaminE:10,thiamine:65,riboflavin:10,niacin:460,pantothenicAcid:28,vitaminB6:32,folicAcid:2,vitaminB12:0,choline:1100,
-        linoleicAcid:0.8,alphaLinolenic:0.06,taurine:0,arginine:0.5,methionine:0.2,lysine:0.37,tryptophan:0.18,kcal:354 }},
+        linoleicAcid:0.8,alphaLinolenic:0.06,taurine:0,arginine:0.5,methionine:0.2,lysine:0.37,tryptophan:0.18,epa:0,dha:0,arachidonicAcid:0,biotin:0.15,vitaminK:0.02,starch:60,solubleFiber:4,sulfur:0.18,cobalt:0.01,vitaminC:0,methionineCystine:0.45,threonine:0.42,leucine:0.8,isoleucine:0.43,valine:0.6,histidine:0.27,phenylalanine:0.65,phenylTyrosine:1.1,epaDhaCombined:0,kcal:354 }},
   { id:'tapioca', name:'Tapioca Starch', cat:'Grains & Carbs', color:'#d4d4d4', cost:0.8,
     n:{ protein:0.2,fat:0.03,fiber:0.9,moisture:11,ash:0.2,calcium:0.02,phosphorus:0.01,potassium:0.01,sodium:0.01,chloride:0.01,magnesium:0.01,
         iron:2,copper:0.2,manganese:1,zinc:1,iodine:0.01,selenium:0.01,
         vitaminA:0,vitaminD:0,vitaminE:0,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:360 }},
+        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:0,dha:0,arachidonicAcid:0,biotin:0,vitaminK:0,starch:87,solubleFiber:0,sulfur:0,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0,kcal:360 }},
   { id:'coconut_oil', name:'Coconut Oil', cat:'Fats & Oils', color:'#fefce8', cost:3.5,
     n:{ protein:0,fat:99,fiber:0,moisture:0,ash:0,calcium:0,phosphorus:0,potassium:0,sodium:0,chloride:0,magnesium:0,
         iron:0,copper:0,manganese:0,zinc:0,iodine:0,selenium:0,
         vitaminA:0,vitaminD:0,vitaminE:10,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:2,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:862 }},
+        linoleicAcid:2,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:0,dha:0,arachidonicAcid:0,biotin:0,vitaminK:0,starch:0,solubleFiber:0,sulfur:0,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0,kcal:862 }},
   { id:'kelp_meal', name:'Kelp Meal (Dried)', cat:'Minerals', color:'#166534', cost:2.0,
     n:{ protein:7,fat:1,fiber:8,moisture:12,ash:30,calcium:1.5,phosphorus:0.2,potassium:3.0,sodium:2.5,chloride:3.0,magnesium:0.8,
         iron:300,copper:5,manganese:15,zinc:35,iodine:700,selenium:0.5,
         vitaminA:0,vitaminD:0,vitaminE:10,thiamine:5,riboflavin:8,niacin:25,pantothenicAcid:10,vitaminB6:5,folicAcid:1.5,vitaminB12:0,choline:300,
-        linoleicAcid:0.1,alphaLinolenic:0.05,taurine:0,arginine:0.3,methionine:0.1,lysine:0.2,tryptophan:0.04,kcal:180 }},
+        linoleicAcid:0.1,alphaLinolenic:0.05,taurine:0,arginine:0.3,methionine:0.1,lysine:0.2,tryptophan:0.04,epa:0.1,dha:0.1,arachidonicAcid:0.05,biotin:0.1,vitaminK:2,starch:10,solubleFiber:10,sulfur:0.7,cobalt:0.5,vitaminC:30,methionineCystine:0.3,threonine:0.3,leucine:0.6,isoleucine:0.4,valine:0.5,histidine:0.2,phenylalanine:0.3,phenylTyrosine:0.5,epaDhaCombined:0.2,kcal:180 }},
   { id:'chicken_fat', name:'Chicken Fat', cat:'Fats & Oils', color:'#fb923c', cost:1.8,
     n:{ protein:0,fat:99,fiber:0,moisture:0.5,ash:0,calcium:0,phosphorus:0,potassium:0,sodium:0,chloride:0,magnesium:0,
         iron:0,copper:0,manganese:0,zinc:0,iodine:0,selenium:0,
         vitaminA:0,vitaminD:0,vitaminE:200,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:20,alphaLinolenic:1,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:890 }},
+        linoleicAcid:20,alphaLinolenic:1,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:0.05,dha:0.1,arachidonicAcid:0.7,biotin:0,vitaminK:0,starch:0,solubleFiber:0,sulfur:0,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0.15000000000000002,kcal:890 }},
   { id:'salmon_oil', name:'Salmon Oil', cat:'Fats & Oils', color:'#06b6d4', cost:6.0,
     n:{ protein:0,fat:99,fiber:0,moisture:0.5,ash:0,calcium:0,phosphorus:0,potassium:0,sodium:0,chloride:0,magnesium:0,
         iron:0,copper:0,manganese:0,zinc:0,iodine:0.5,selenium:0,
         vitaminA:0,vitaminD:8000,vitaminE:100,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:3,alphaLinolenic:0.5,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:890 }},
+        linoleicAcid:3,alphaLinolenic:0.5,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:13,dha:18,arachidonicAcid:1.0,biotin:0,vitaminK:0,starch:0,solubleFiber:0,sulfur:0,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:31,kcal:890 }},
   { id:'flaxseed', name:'Flaxseed (Ground)', cat:'Fats & Oils', color:'#7c3aed', cost:2.2,
     n:{ protein:24,fat:42,fiber:27,moisture:7,ash:3.5,calcium:0.26,phosphorus:0.62,potassium:0.81,sodium:0.04,chloride:0.06,magnesium:0.39,
         iron:57,copper:5,manganese:25,zinc:44,iodine:0.2,selenium:0.18,
         vitaminA:0,vitaminD:0,vitaminE:6,thiamine:5,riboflavin:2,niacin:30,pantothenicAcid:15,vitaminB6:5,folicAcid:0.9,vitaminB12:0,choline:780,
-        linoleicAcid:5.5,alphaLinolenic:23,taurine:0,arginine:2.5,methionine:0.45,lysine:1.2,tryptophan:0.37,kcal:534 }},
+        linoleicAcid:5.5,alphaLinolenic:23,taurine:0,arginine:2.5,methionine:0.45,lysine:1.2,tryptophan:0.37,epa:0,dha:0,arachidonicAcid:0,biotin:0.05,vitaminK:0.05,starch:2,solubleFiber:8,sulfur:0.3,cobalt:0.02,vitaminC:1,methionineCystine:0.7,threonine:0.8,leucine:1.4,isoleucine:0.9,valine:1.1,histidine:0.5,phenylalanine:1.0,phenylTyrosine:1.6,epaDhaCombined:0,kcal:534 }},
   { id:'beet_pulp', name:'Beet Pulp (Dried)', cat:'Fiber Sources', color:'#be185d', cost:0.6,
     n:{ protein:9,fat:0.5,fiber:18,moisture:11,ash:5,calcium:0.8,phosphorus:0.08,potassium:0.4,sodium:0.3,chloride:0.5,magnesium:0.12,
         iron:60,copper:3,manganese:20,zinc:20,iodine:0.2,selenium:0.1,
         vitaminA:0,vitaminD:0,vitaminE:5,thiamine:2,riboflavin:5,niacin:20,pantothenicAcid:10,vitaminB6:5,folicAcid:0.5,vitaminB12:0,choline:300,
-        linoleicAcid:0.2,alphaLinolenic:0.05,taurine:0,arginine:0.3,methionine:0.05,lysine:0.2,tryptophan:0.05,kcal:240 }},
+        linoleicAcid:0.2,alphaLinolenic:0.05,taurine:0,arginine:0.3,methionine:0.05,lysine:0.2,tryptophan:0.05,epa:0,dha:0,arachidonicAcid:0,biotin:0.04,vitaminK:0.01,starch:2,solubleFiber:12,sulfur:0.2,cobalt:0.02,vitaminC:3,methionineCystine:0.13,threonine:0.3,leucine:0.5,isoleucine:0.3,valine:0.4,histidine:0.2,phenylalanine:0.3,phenylTyrosine:0.5,epaDhaCombined:0,kcal:240 }},
   { id:'soybean_meal', name:'Soybean Meal', cat:'Proteins', color:'#65a30d', cost:0.9,
     n:{ protein:46,fat:2,fiber:4,moisture:11,ash:6,calcium:0.3,phosphorus:0.65,potassium:2.0,sodium:0.3,chloride:0.4,magnesium:0.25,
         iron:100,copper:15,manganese:30,zinc:50,iodine:0.1,selenium:0.1,
         vitaminA:0,vitaminD:0,vitaminE:10,thiamine:5,riboflavin:10,niacin:20,pantothenicAcid:18,vitaminB6:8,folicAcid:0.8,vitaminB12:0,choline:2700,
-        linoleicAcid:2,alphaLinolenic:0.3,taurine:0,arginine:3.2,methionine:0.65,lysine:2.9,tryptophan:0.62,kcal:340 }},
+        linoleicAcid:2,alphaLinolenic:0.3,taurine:0,arginine:3.2,methionine:0.65,lysine:2.9,tryptophan:0.62,epa:0,dha:0,arachidonicAcid:0,biotin:0.3,vitaminK:0.2,starch:5,solubleFiber:6,sulfur:0.4,cobalt:0.02,vitaminC:2,methionineCystine:1.5,threonine:1.9,leucine:3.7,isoleucine:2.2,valine:2.3,histidine:1.3,phenylalanine:2.5,phenylTyrosine:4.2,epaDhaCombined:0,kcal:340 }},
   { id:'dog_premix', name:'Vitamin-Mineral Premix (Dog)', cat:'Premixes', color:'#6366f1', cost:12.0,
     n:{ protein:0,fat:0,fiber:0,moisture:5,ash:70,calcium:0,phosphorus:0,potassium:0,sodium:0,chloride:0,magnesium:0,
         iron:40000,copper:4000,manganese:5000,zinc:40000,iodine:500,selenium:50,
         vitaminA:5000000,vitaminD:500000,vitaminE:50000,thiamine:2000,riboflavin:2000,niacin:10000,pantothenicAcid:5000,vitaminB6:1000,folicAcid:200,vitaminB12:20,choline:500000,
-        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:0 }},
+        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:0,dha:0.5,arachidonicAcid:0,biotin:10,vitaminK:5,starch:0,solubleFiber:0,sulfur:0,cobalt:1,vitaminC:500,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0.5,kcal:0 }},
   { id:'cat_premix', name:'Vitamin-Mineral Premix (Cat)', cat:'Premixes', color:'#a855f7', cost:14.0,
     n:{ protein:0,fat:0,fiber:0,moisture:5,ash:70,calcium:0,phosphorus:0,potassium:0,sodium:0,chloride:0,magnesium:0,
         iron:40000,copper:4000,manganese:5000,zinc:40000,iodine:500,selenium:50,
         vitaminA:4000000,vitaminD:300000,vitaminE:40000,thiamine:60000,riboflavin:40000,niacin:500000,pantothenicAcid:60000,vitaminB6:40000,folicAcid:8000,vitaminB12:200,choline:500000,
-        linoleicAcid:0,alphaLinolenic:0,taurine:10,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:0 }},
+        linoleicAcid:0,alphaLinolenic:0,taurine:10,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:1,dha:1.5,arachidonicAcid:2,biotin:12,vitaminK:6,starch:0,solubleFiber:0,sulfur:0,cobalt:1,vitaminC:500,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:2.5,kcal:0 }},
   { id:'limestone', name:'Limestone (Calcium Carbonate)', cat:'Minerals', color:'#94a3b8', cost:0.3,
     n:{ protein:0,fat:0,fiber:0,moisture:0.5,ash:99,calcium:40,phosphorus:0,potassium:0,sodium:0,chloride:0,magnesium:0.3,
         iron:0,copper:0,manganese:0,zinc:0,iodine:0,selenium:0,
         vitaminA:0,vitaminD:0,vitaminE:0,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:0 }},
+        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:0,dha:0,arachidonicAcid:0,biotin:0,vitaminK:0,starch:0,solubleFiber:0,sulfur:0.05,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0,kcal:0 }},
   { id:'dicalcium_phos', name:'Dicalcium Phosphate', cat:'Minerals', color:'#64748b', cost:0.8,
     n:{ protein:0,fat:0,fiber:0,moisture:0.5,ash:99,calcium:22,phosphorus:18,potassium:0,sodium:0,chloride:0,magnesium:0.1,
         iron:0,copper:0,manganese:0,zinc:0,iodine:0,selenium:0,
         vitaminA:0,vitaminD:0,vitaminE:0,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:0 }},
+        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:0,dha:0,arachidonicAcid:0,biotin:0,vitaminK:0,starch:0,solubleFiber:0,sulfur:0.1,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0,kcal:0 }},
   // ---- ADDITIONAL PET FOOD INGREDIENTS ----
   { id:'duck_meal', name:'Duck Meal', cat:'Proteins', color:'#059669', cost:4.5,
     n:{ protein:55,fat:18,fiber:1,moisture:7,ash:14,calcium:4.0,phosphorus:2.3,potassium:0.5,sodium:0.4,chloride:0.5,magnesium:0.1,
         iron:150,copper:7,manganese:12,zinc:80,iodine:0.3,selenium:0.6,
         vitaminA:0,vitaminD:0,vitaminE:40,thiamine:15,riboflavin:55,niacin:500,pantothenicAcid:60,vitaminB6:22,folicAcid:3,vitaminB12:0.25,choline:1200,
-        linoleicAcid:3.5,alphaLinolenic:0.3,taurine:0.05,arginine:3.5,methionine:1.3,lysine:3.9,tryptophan:0.42,kcal:450 }},
+        linoleicAcid:3.5,alphaLinolenic:0.3,taurine:0.05,arginine:3.5,methionine:1.3,lysine:3.9,tryptophan:0.42,epa:0.05,dha:0.1,arachidonicAcid:0.5,biotin:0.18,vitaminK:0.1,starch:0,solubleFiber:0,sulfur:0.5,cobalt:0.04,vitaminC:0,methionineCystine:2.2,threonine:2.5,leucine:4.4,isoleucine:2.7,valine:3.0,histidine:1.3,phenylalanine:2.4,phenylTyrosine:4.0,epaDhaCombined:0.15000000000000002,kcal:450 }},
   { id:'venison_meal', name:'Venison Meal', cat:'Proteins', color:'#7c2d12', cost:6.0,
     n:{ protein:58,fat:12,fiber:1,moisture:8,ash:18,calcium:6.0,phosphorus:3.0,potassium:0.5,sodium:0.4,chloride:0.5,magnesium:0.12,
         iron:200,copper:10,manganese:14,zinc:95,iodine:0.2,selenium:0.5,
         vitaminA:0,vitaminD:0,vitaminE:30,thiamine:12,riboflavin:45,niacin:550,pantothenicAcid:55,vitaminB6:20,folicAcid:2.5,vitaminB12:0.2,choline:1100,
-        linoleicAcid:1.0,alphaLinolenic:0.1,taurine:0.04,arginine:3.6,methionine:1.4,lysine:4.0,tryptophan:0.4,kcal:420 }},
+        linoleicAcid:1.0,alphaLinolenic:0.1,taurine:0.04,arginine:3.6,methionine:1.4,lysine:4.0,tryptophan:0.4,epa:0.02,dha:0.05,arachidonicAcid:0.3,biotin:0.1,vitaminK:0.05,starch:0,solubleFiber:0,sulfur:0.45,cobalt:0.04,vitaminC:0,methionineCystine:2.2,threonine:2.5,leucine:4.4,isoleucine:2.7,valine:3.0,histidine:1.4,phenylalanine:2.4,phenylTyrosine:4.0,epaDhaCombined:0.07,kcal:420 }},
   { id:'rabbit_meal', name:'Rabbit Meal', cat:'Proteins', color:'#a16207', cost:5.5,
     n:{ protein:60,fat:10,fiber:1,moisture:8,ash:16,calcium:5.0,phosphorus:2.8,potassium:0.5,sodium:0.4,chloride:0.5,magnesium:0.1,
         iron:170,copper:8,manganese:12,zinc:85,iodine:0.3,selenium:0.5,
         vitaminA:0,vitaminD:0,vitaminE:25,thiamine:10,riboflavin:40,niacin:500,pantothenicAcid:50,vitaminB6:18,folicAcid:2,vitaminB12:0.2,choline:1000,
-        linoleicAcid:1.2,alphaLinolenic:0.15,taurine:0.04,arginine:3.8,methionine:1.3,lysine:4.2,tryptophan:0.42,kcal:415 }},
+        linoleicAcid:1.2,alphaLinolenic:0.15,taurine:0.04,arginine:3.8,methionine:1.3,lysine:4.2,tryptophan:0.42,epa:0.02,dha:0.05,arachidonicAcid:0.3,biotin:0.1,vitaminK:0.05,starch:0,solubleFiber:0,sulfur:0.5,cobalt:0.04,vitaminC:0,methionineCystine:2.3,threonine:2.6,leucine:4.5,isoleucine:2.8,valine:3.1,histidine:1.4,phenylalanine:2.5,phenylTyrosine:4.1,epaDhaCombined:0.07,kcal:415 }},
   { id:'pork_meal', name:'Pork Meal', cat:'Proteins', color:'#e11d48', cost:2.6,
     n:{ protein:54,fat:16,fiber:1,moisture:7,ash:18,calcium:5.5,phosphorus:3.0,potassium:0.5,sodium:0.5,chloride:0.6,magnesium:0.12,
         iron:180,copper:8,manganese:10,zinc:100,iodine:0.3,selenium:0.6,
         vitaminA:0,vitaminD:0,vitaminE:35,thiamine:20,riboflavin:50,niacin:550,pantothenicAcid:55,vitaminB6:22,folicAcid:3,vitaminB12:0.3,choline:1100,
-        linoleicAcid:2.8,alphaLinolenic:0.1,taurine:0.04,arginine:3.2,methionine:1.1,lysine:3.8,tryptophan:0.38,kcal:440 }},
+        linoleicAcid:2.8,alphaLinolenic:0.1,taurine:0.04,arginine:3.2,methionine:1.1,lysine:3.8,tryptophan:0.38,epa:0.02,dha:0.02,arachidonicAcid:0.4,biotin:0.12,vitaminK:0.05,starch:0,solubleFiber:0,sulfur:0.5,cobalt:0.04,vitaminC:0,methionineCystine:1.9,threonine:2.2,leucine:4.0,isoleucine:2.5,valine:2.8,histidine:1.7,phenylalanine:2.2,phenylTyrosine:3.7,epaDhaCombined:0.04,kcal:440 }},
   { id:'salmon_meal', name:'Salmon Meal', cat:'Proteins', color:'#f472b6', cost:4.0,
     n:{ protein:62,fat:12,fiber:0.5,moisture:8,ash:15,calcium:3.5,phosphorus:2.5,potassium:0.7,sodium:0.6,chloride:0.7,magnesium:0.15,
         iron:180,copper:5,manganese:8,zinc:110,iodine:3,selenium:2.0,
         vitaminA:0,vitaminD:15000,vitaminE:25,thiamine:6,riboflavin:65,niacin:750,pantothenicAcid:45,vitaminB6:18,folicAcid:2,vitaminB12:0.8,choline:2500,
-        linoleicAcid:0.6,alphaLinolenic:0.4,taurine:0.3,arginine:3.8,methionine:1.9,lysine:5.2,tryptophan:0.45,kcal:410 }},
+        linoleicAcid:0.6,alphaLinolenic:0.4,taurine:0.3,arginine:3.8,methionine:1.9,lysine:5.2,tryptophan:0.45,epa:1.5,dha:2.5,arachidonicAcid:0.1,biotin:0.15,vitaminK:0.5,starch:0,solubleFiber:0,sulfur:0.4,cobalt:0.05,vitaminC:0,methionineCystine:2.5,threonine:2.6,leucine:4.7,isoleucine:2.8,valine:3.2,histidine:1.5,phenylalanine:2.5,phenylTyrosine:4.2,epaDhaCombined:4.0,kcal:410 }},
   { id:'chicken_liver', name:'Chicken Liver (Dried)', cat:'Proteins', color:'#b91c1c', cost:4.8,
     n:{ protein:52,fat:20,fiber:0,moisture:6,ash:5,calcium:0.08,phosphorus:1.8,potassium:1.5,sodium:0.4,chloride:0.3,magnesium:0.1,
         iron:400,copper:25,manganese:8,zinc:60,iodine:0.5,selenium:3.5,
         vitaminA:200000,vitaminD:500,vitaminE:50,thiamine:15,riboflavin:100,niacin:500,pantothenicAcid:300,vitaminB6:40,folicAcid:20,vitaminB12:1.5,choline:5000,
-        linoleicAcid:3.0,alphaLinolenic:0.1,taurine:0.15,arginine:3.0,methionine:1.2,lysine:3.5,tryptophan:0.5,kcal:480 }},
+        linoleicAcid:3.0,alphaLinolenic:0.1,taurine:0.15,arginine:3.0,methionine:1.2,lysine:3.5,tryptophan:0.5,epa:0.05,dha:0.4,arachidonicAcid:1.5,biotin:4.0,vitaminK:0.3,starch:0,solubleFiber:0,sulfur:0.5,cobalt:0.5,vitaminC:280,methionineCystine:2.0,threonine:2.3,leucine:4.5,isoleucine:2.5,valine:3.0,histidine:1.3,phenylalanine:2.4,phenylTyrosine:4.0,epaDhaCombined:0.45,kcal:480 }},
   { id:'beef_heart', name:'Beef Heart (Dried)', cat:'Proteins', color:'#dc2626', cost:5.0,
     n:{ protein:55,fat:22,fiber:0,moisture:6,ash:5,calcium:0.05,phosphorus:1.2,potassium:1.3,sodium:0.4,chloride:0.4,magnesium:0.12,
         iron:200,copper:15,manganese:3,zinc:55,iodine:0.2,selenium:1.2,
         vitaminA:0,vitaminD:0,vitaminE:10,thiamine:25,riboflavin:55,niacin:400,pantothenicAcid:80,vitaminB6:15,folicAcid:2,vitaminB12:0.5,choline:2000,
-        linoleicAcid:2.0,alphaLinolenic:0.1,taurine:0.2,arginine:3.5,methionine:1.1,lysine:4.0,tryptophan:0.4,kcal:500 }},
+        linoleicAcid:2.0,alphaLinolenic:0.1,taurine:0.2,arginine:3.5,methionine:1.1,lysine:4.0,tryptophan:0.4,epa:0.05,dha:0.1,arachidonicAcid:0.5,biotin:0.5,vitaminK:0.05,starch:0,solubleFiber:0,sulfur:0.5,cobalt:0.1,vitaminC:50,methionineCystine:2.0,threonine:2.3,leucine:4.4,isoleucine:2.6,valine:2.9,histidine:1.3,phenylalanine:2.4,phenylTyrosine:4.0,epaDhaCombined:0.15000000000000002,kcal:500 }},
   { id:'green_lipped_mussel', name:'Green-Lipped Mussel (Dried)', cat:'Proteins', color:'#0d9488', cost:25.0,
     n:{ protein:48,fat:10,fiber:0,moisture:5,ash:10,calcium:0.5,phosphorus:0.6,potassium:0.7,sodium:1.5,chloride:1.8,magnesium:0.2,
         iron:100,copper:5,manganese:10,zinc:70,iodine:2,selenium:1.5,
         vitaminA:0,vitaminD:0,vitaminE:20,thiamine:5,riboflavin:15,niacin:200,pantothenicAcid:30,vitaminB6:10,folicAcid:2,vitaminB12:0.5,choline:800,
-        linoleicAcid:0.5,alphaLinolenic:2.0,taurine:0.2,arginine:2.5,methionine:1.0,lysine:3.5,tryptophan:0.3,kcal:350 }},
+        linoleicAcid:0.5,alphaLinolenic:2.0,taurine:0.2,arginine:2.5,methionine:1.0,lysine:3.5,tryptophan:0.3,epa:1.5,dha:2.5,arachidonicAcid:0.1,biotin:0.1,vitaminK:0.1,starch:3,solubleFiber:0,sulfur:0.5,cobalt:0.1,vitaminC:30,methionineCystine:1.5,threonine:2.0,leucine:3.5,isoleucine:2.1,valine:2.4,histidine:1.0,phenylalanine:1.9,phenylTyrosine:3.2,epaDhaCombined:4.0,kcal:350 }},
   { id:'white_rice', name:'White Rice (Brewer\'s)', cat:'Grains & Carbs', color:'#fafaf9', cost:0.5,
     n:{ protein:7.0,fat:1.0,fiber:1.5,moisture:12,ash:1.0,calcium:0.01,phosphorus:0.11,potassium:0.12,sodium:0.01,chloride:0.02,magnesium:0.04,
         iron:8,copper:2,manganese:10,zinc:12,iodine:0.02,selenium:0.1,
         vitaminA:0,vitaminD:0,vitaminE:5,thiamine:7,riboflavin:3,niacin:160,pantothenicAcid:40,vitaminB6:16,folicAcid:0.5,vitaminB12:0,choline:200,
-        linoleicAcid:0.3,alphaLinolenic:0.01,taurine:0,arginine:0.6,methionine:0.16,lysine:0.26,tryptophan:0.08,kcal:360 }},
+        linoleicAcid:0.3,alphaLinolenic:0.01,taurine:0,arginine:0.6,methionine:0.16,lysine:0.26,tryptophan:0.08,epa:0,dha:0,arachidonicAcid:0,biotin:0.05,vitaminK:0,starch:80,solubleFiber:0.5,sulfur:0.05,cobalt:0.01,vitaminC:0,methionineCystine:0.3,threonine:0.25,leucine:0.6,isoleucine:0.3,valine:0.42,histidine:0.18,phenylalanine:0.36,phenylTyrosine:0.65,epaDhaCombined:0,kcal:360 }},
   { id:'whole_wheat', name:'Whole Wheat (Ground)', cat:'Grains & Carbs', color:'#b45309', cost:0.4,
     n:{ protein:13,fat:2.5,fiber:12,moisture:11,ash:1.8,calcium:0.03,phosphorus:0.33,potassium:0.35,sodium:0.01,chloride:0.05,magnesium:0.12,
         iron:36,copper:4,manganese:40,zinc:28,iodine:0.05,selenium:0.7,
         vitaminA:0,vitaminD:0,vitaminE:12,thiamine:40,riboflavin:12,niacin:550,pantothenicAcid:95,vitaminB6:30,folicAcid:4,vitaminB12:0,choline:600,
-        linoleicAcid:0.8,alphaLinolenic:0.05,taurine:0,arginine:0.6,methionine:0.22,lysine:0.36,tryptophan:0.17,kcal:340 }},
+        linoleicAcid:0.8,alphaLinolenic:0.05,taurine:0,arginine:0.6,methionine:0.22,lysine:0.36,tryptophan:0.17,epa:0,dha:0,arachidonicAcid:0,biotin:0.11,vitaminK:0.02,starch:60,solubleFiber:2,sulfur:0.15,cobalt:0.01,vitaminC:0,methionineCystine:0.5,threonine:0.4,leucine:0.9,isoleucine:0.45,valine:0.6,histidine:0.32,phenylalanine:0.65,phenylTyrosine:1.05,epaDhaCombined:0,kcal:340 }},
   { id:'peas_whole', name:'Whole Peas (Dried)', cat:'Grains & Carbs', color:'#16a34a', cost:0.7,
     n:{ protein:24,fat:1.2,fiber:8,moisture:10,ash:3,calcium:0.05,phosphorus:0.37,potassium:1.0,sodium:0.02,chloride:0.04,magnesium:0.12,
         iron:50,copper:9,manganese:12,zinc:33,iodine:0.1,selenium:0.2,
         vitaminA:150,vitaminD:0,vitaminE:10,thiamine:7,riboflavin:2,niacin:30,pantothenicAcid:16,vitaminB6:2,folicAcid:3,vitaminB12:0,choline:1000,
-        linoleicAcid:0.5,alphaLinolenic:0.1,taurine:0,arginine:2.2,methionine:0.25,lysine:1.8,tryptophan:0.25,kcal:340 }},
+        linoleicAcid:0.5,alphaLinolenic:0.1,taurine:0,arginine:2.2,methionine:0.25,lysine:1.8,tryptophan:0.25,epa:0,dha:0,arachidonicAcid:0,biotin:0.06,vitaminK:0.05,starch:45,solubleFiber:4,sulfur:0.25,cobalt:0.02,vitaminC:2,methionineCystine:0.5,threonine:1.0,leucine:1.7,isoleucine:1.0,valine:1.1,histidine:0.6,phenylalanine:1.1,phenylTyrosine:1.9,epaDhaCombined:0,kcal:340 }},
   { id:'chickpeas', name:'Chickpeas (Dried)', cat:'Grains & Carbs', color:'#ca8a04', cost:0.9,
     n:{ protein:21,fat:6,fiber:12,moisture:8,ash:3,calcium:0.1,phosphorus:0.37,potassium:0.87,sodium:0.02,chloride:0.04,magnesium:0.12,
         iron:62,copper:8,manganese:17,zinc:34,iodine:0.1,selenium:0.3,
         vitaminA:100,vitaminD:0,vitaminE:8,thiamine:5,riboflavin:2,niacin:15,pantothenicAcid:15,vitaminB6:5,folicAcid:6,vitaminB12:0,choline:950,
-        linoleicAcid:2.5,alphaLinolenic:0.1,taurine:0,arginine:2.0,methionine:0.3,lysine:1.4,tryptophan:0.2,kcal:364 }},
+        linoleicAcid:2.5,alphaLinolenic:0.1,taurine:0,arginine:2.0,methionine:0.3,lysine:1.4,tryptophan:0.2,epa:0,dha:0,arachidonicAcid:0,biotin:0.05,vitaminK:0.05,starch:40,solubleFiber:5,sulfur:0.2,cobalt:0.02,vitaminC:4,methionineCystine:0.5,threonine:0.8,leucine:1.5,isoleucine:0.9,valine:0.9,histidine:0.55,phenylalanine:1.1,phenylTyrosine:1.8,epaDhaCombined:0,kcal:364 }},
   { id:'lentils', name:'Lentils (Dried)', cat:'Grains & Carbs', color:'#78716c', cost:0.8,
     n:{ protein:26,fat:1,fiber:11,moisture:9,ash:2.7,calcium:0.04,phosphorus:0.28,potassium:0.68,sodium:0.01,chloride:0.03,magnesium:0.05,
         iron:73,copper:8,manganese:15,zinc:33,iodine:0.1,selenium:0.1,
         vitaminA:0,vitaminD:0,vitaminE:5,thiamine:9,riboflavin:2,niacin:26,pantothenicAcid:21,vitaminB6:5,folicAcid:5,vitaminB12:0,choline:970,
-        linoleicAcid:0.4,alphaLinolenic:0.08,taurine:0,arginine:2.0,methionine:0.2,lysine:1.7,tryptophan:0.22,kcal:352 }},
+        linoleicAcid:0.4,alphaLinolenic:0.08,taurine:0,arginine:2.0,methionine:0.2,lysine:1.7,tryptophan:0.22,epa:0,dha:0,arachidonicAcid:0,biotin:0.06,vitaminK:0.05,starch:45,solubleFiber:4,sulfur:0.2,cobalt:0.02,vitaminC:2,methionineCystine:0.5,threonine:1.0,leucine:1.9,isoleucine:1.1,valine:1.3,histidine:0.7,phenylalanine:1.3,phenylTyrosine:2.0,epaDhaCombined:0,kcal:352 }},
   { id:'pumpkin_dried', name:'Pumpkin (Dried)', cat:'Fiber Sources', color:'#ea580c', cost:2.5,
     n:{ protein:10,fat:1,fiber:20,moisture:8,ash:5,calcium:0.2,phosphorus:0.4,potassium:3.0,sodium:0.04,chloride:0.05,magnesium:0.12,
         iron:30,copper:5,manganese:8,zinc:15,iodine:0.1,selenium:0.1,
         vitaminA:80000,vitaminD:0,vitaminE:30,thiamine:5,riboflavin:5,niacin:60,pantothenicAcid:30,vitaminB6:6,folicAcid:2,vitaminB12:0,choline:200,
-        linoleicAcid:0.5,alphaLinolenic:0.05,taurine:0,arginine:0.5,methionine:0.1,lysine:0.4,tryptophan:0.1,kcal:250 }},
+        linoleicAcid:0.5,alphaLinolenic:0.05,taurine:0,arginine:0.5,methionine:0.1,lysine:0.4,tryptophan:0.1,epa:0,dha:0,arachidonicAcid:0,biotin:0.05,vitaminK:0.5,starch:35,solubleFiber:6,sulfur:0.1,cobalt:0.02,vitaminC:80,methionineCystine:0.2,threonine:0.3,leucine:0.6,isoleucine:0.3,valine:0.4,histidine:0.15,phenylalanine:0.4,phenylTyrosine:0.8,epaDhaCombined:0,kcal:250 }},
   { id:'psyllium_husk', name:'Psyllium Husk', cat:'Fiber Sources', color:'#c084fc', cost:5.0,
     n:{ protein:2,fat:0.5,fiber:72,moisture:8,ash:4,calcium:0.2,phosphorus:0.1,potassium:0.3,sodium:0.1,chloride:0.1,magnesium:0.06,
         iron:30,copper:2,manganese:5,zinc:10,iodine:0.05,selenium:0.05,
         vitaminA:0,vitaminD:0,vitaminE:0,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:40 }},
+        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:0,dha:0,arachidonicAcid:0,biotin:0,vitaminK:0,starch:0,solubleFiber:70,sulfur:0.05,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0,kcal:40 }},
   { id:'sunflower_oil', name:'Sunflower Oil', cat:'Fats & Oils', color:'#facc15', cost:1.5,
     n:{ protein:0,fat:99,fiber:0,moisture:0,ash:0,calcium:0,phosphorus:0,potassium:0,sodium:0,chloride:0,magnesium:0,
         iron:0,copper:0,manganese:0,zinc:0,iodine:0,selenium:0,
         vitaminA:0,vitaminD:0,vitaminE:410,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:62,alphaLinolenic:0.2,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:884 }},
+        linoleicAcid:62,alphaLinolenic:0.2,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:0,dha:0,arachidonicAcid:0,biotin:0,vitaminK:0.05,starch:0,solubleFiber:0,sulfur:0,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0,kcal:884 }},
   { id:'fish_oil', name:'Fish Oil (Generic)', cat:'Fats & Oils', color:'#0284c7', cost:5.0,
     n:{ protein:0,fat:99,fiber:0,moisture:0.5,ash:0,calcium:0,phosphorus:0,potassium:0,sodium:0,chloride:0,magnesium:0,
         iron:0,copper:0,manganese:0,zinc:0,iodine:0.5,selenium:0,
         vitaminA:0,vitaminD:10000,vitaminE:80,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:2,alphaLinolenic:1.5,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:890 }},
+        linoleicAcid:2,alphaLinolenic:1.5,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:12,dha:16,arachidonicAcid:0.8,biotin:0,vitaminK:0,starch:0,solubleFiber:0,sulfur:0,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:28,kcal:890 }},
   { id:'salt', name:'Salt (NaCl)', cat:'Minerals', color:'#f8fafc', cost:0.2,
     n:{ protein:0,fat:0,fiber:0,moisture:0.2,ash:99,calcium:0.03,phosphorus:0,potassium:0.1,sodium:39,chloride:60,magnesium:0.01,
         iron:3,copper:0.3,manganese:1,zinc:1,iodine:0,selenium:0,
         vitaminA:0,vitaminD:0,vitaminE:0,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:0 }},
+        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:0,dha:0,arachidonicAcid:0,biotin:0,vitaminK:0,starch:0,solubleFiber:0,sulfur:0,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0,kcal:0 }},
   { id:'potassium_chloride', name:'Potassium Chloride', cat:'Minerals', color:'#a8a29e', cost:0.6,
     n:{ protein:0,fat:0,fiber:0,moisture:0.5,ash:99,calcium:0,phosphorus:0,potassium:52,sodium:0,chloride:47,magnesium:0,
         iron:0,copper:0,manganese:0,zinc:0,iodine:0,selenium:0,
         vitaminA:0,vitaminD:0,vitaminE:0,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:0 }},
+        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:0,dha:0,arachidonicAcid:0,biotin:0,vitaminK:0,starch:0,solubleFiber:0,sulfur:0,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0,kcal:0 }},
   { id:'dl_methionine', name:'DL-Methionine', cat:'Premixes', color:'#818cf8', cost:8.0,
     n:{ protein:59,fat:0,fiber:0,moisture:0.5,ash:0,calcium:0,phosphorus:0,potassium:0,sodium:0,chloride:0,magnesium:0,
         iron:0,copper:0,manganese:0,zinc:0,iodine:0,selenium:0,
         vitaminA:0,vitaminD:0,vitaminE:0,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:59,lysine:0,tryptophan:0,kcal:0 }},
+        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:59,lysine:0,tryptophan:0,epa:0,dha:0,arachidonicAcid:0,biotin:0,vitaminK:0,starch:0,solubleFiber:0,sulfur:21.5,cobalt:0,vitaminC:0,methionineCystine:59,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0,kcal:0 }},
   { id:'l_lysine', name:'L-Lysine HCl', cat:'Premixes', color:'#6366f1', cost:6.0,
     n:{ protein:79,fat:0,fiber:0,moisture:0.5,ash:0,calcium:0,phosphorus:0,potassium:0,sodium:0,chloride:0,magnesium:0,
         iron:0,copper:0,manganese:0,zinc:0,iodine:0,selenium:0,
         vitaminA:0,vitaminD:0,vitaminE:0,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:79,tryptophan:0,kcal:0 }},
+        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:79,tryptophan:0,epa:0,dha:0,arachidonicAcid:0,biotin:0,vitaminK:0,starch:0,solubleFiber:0,sulfur:0,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0,kcal:0 }},
   { id:'taurine_powder', name:'Taurine Powder', cat:'Premixes', color:'#c084fc', cost:15.0,
     n:{ protein:0,fat:0,fiber:0,moisture:0.5,ash:0,calcium:0,phosphorus:0,potassium:0,sodium:0,chloride:0,magnesium:0,
         iron:0,copper:0,manganese:0,zinc:0,iodine:0,selenium:0,
         vitaminA:0,vitaminD:0,vitaminE:0,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:0,
-        linoleicAcid:0,alphaLinolenic:0,taurine:99,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:0 }},
+        linoleicAcid:0,alphaLinolenic:0,taurine:99,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:0,dha:0,arachidonicAcid:0,biotin:0,vitaminK:0,starch:0,solubleFiber:0,sulfur:25,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0,kcal:0 }},
   { id:'choline_chloride', name:'Choline Chloride (60%)', cat:'Premixes', color:'#2563eb', cost:4.0,
     n:{ protein:0,fat:0,fiber:0,moisture:2,ash:10,calcium:0,phosphorus:0,potassium:0,sodium:0,chloride:25,magnesium:0,
         iron:0,copper:0,manganese:0,zinc:0,iodine:0,selenium:0,
         vitaminA:0,vitaminD:0,vitaminE:0,thiamine:0,riboflavin:0,niacin:0,pantothenicAcid:0,vitaminB6:0,folicAcid:0,vitaminB12:0,choline:600000,
-        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,kcal:0 }},
+        linoleicAcid:0,alphaLinolenic:0,taurine:0,arginine:0,methionine:0,lysine:0,tryptophan:0,epa:0,dha:0,arachidonicAcid:0,biotin:0,vitaminK:0,starch:0,solubleFiber:0,sulfur:0,cobalt:0,vitaminC:0,methionineCystine:0,threonine:0,leucine:0,isoleucine:0,valine:0,histidine:0,phenylalanine:0,phenylTyrosine:0,epaDhaCombined:0,kcal:0 }},
   { id:'yeast_brewers', name:'Brewer\'s Yeast (Dried)', cat:'Premixes', color:'#92400e', cost:2.0,
     n:{ protein:45,fat:1,fiber:5,moisture:5,ash:7,calcium:0.1,phosphorus:1.4,potassium:1.7,sodium:0.1,chloride:0.1,magnesium:0.2,
         iron:45,copper:35,manganese:5,zinc:75,iodine:0.1,selenium:0.5,
         vitaminA:0,vitaminD:0,vitaminE:5,thiamine:120,riboflavin:40,niacin:400,pantothenicAcid:110,vitaminB6:40,folicAcid:20,vitaminB12:0,choline:3000,
-        linoleicAcid:0.3,alphaLinolenic:0.02,taurine:0,arginine:2.2,methionine:0.7,lysine:3.0,tryptophan:0.5,kcal:320 }},
+        linoleicAcid:0.3,alphaLinolenic:0.02,taurine:0,arginine:2.2,methionine:0.7,lysine:3.0,tryptophan:0.5,epa:0,dha:0,arachidonicAcid:0.1,biotin:1.5,vitaminK:0,starch:3,solubleFiber:3,sulfur:0.5,cobalt:0.02,vitaminC:1,methionineCystine:1.2,threonine:2.4,leucine:3.5,isoleucine:2.6,valine:2.6,histidine:1.2,phenylalanine:2.0,phenylTyrosine:3.6,epaDhaCombined:0,kcal:320 }},
 ];
 
 // ---------- FOOD FORMAT DEFINITIONS ----------
@@ -1327,21 +1377,107 @@ function feedingGuide(species, lifeStage, weightKg, neutered, afKcalPerKg) {
 
 
 // ============================================================
-//  STORAGE HELPERS  (localStorage)
+//  STORAGE LAYER — per-user persistent cloud storage
 // ============================================================
+//  Uses window.storage (persistent, per-user, accessible from any device
+//  the user logs into) with localStorage as offline fallback.
+//  Keys are scoped: pfp:users, pfp:f:{userId}, pfp:i:{userId}, pfp:p:{userId}
+// ============================================================
+const HAS_CLOUD = typeof window !== 'undefined' && window.storage && typeof window.storage.get === 'function';
+
+const _ls = {
+  get: (k) => { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch (e) { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
+  del: (k) => { try { localStorage.removeItem(k); return true; } catch (e) { return false; } },
+};
+
+const _cloud = {
+  get: async (k) => { try { const r = await window.storage.get(k); return r ? JSON.parse(r.value) : null; } catch (e) { return null; } },
+  set: async (k, v) => { try { await window.storage.set(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
+  del: async (k) => { try { await window.storage.delete(k); return true; } catch (e) { return false; } },
+};
+
 const DB = {
+  // Users registry — shared since multiple users may share an account
   async getUsers() {
-    try { const r = localStorage.getItem('pfp:users'); return r ? JSON.parse(r) : {}; } catch (e2) { return {}; }
+    if (HAS_CLOUD) {
+      const r = await _cloud.get('pfp:users');
+      if (r) return r;
+    }
+    return _ls.get('pfp:users') || {};
   },
   async setUsers(u) {
-    try { localStorage.setItem('pfp:users', JSON.stringify(u)); } catch (e3) {}
+    if (HAS_CLOUD) await _cloud.set('pfp:users', u);
+    _ls.set('pfp:users', u);
   },
+
+  // Per-user saved formulas (cloud + local mirror for offline)
   async getFormulas(userId) {
-    try { const r = localStorage.getItem(`pfp:f:${userId}`); return r ? JSON.parse(r) : []; } catch (e4) { return []; }
+    if (HAS_CLOUD) {
+      const r = await _cloud.get(`pfp:f:${userId}`);
+      if (r) { _ls.set(`pfp:f:${userId}`, r); return r; }
+    }
+    return _ls.get(`pfp:f:${userId}`) || [];
   },
   async setFormulas(userId, formulas) {
-    try { localStorage.setItem(`pfp:f:${userId}`, JSON.stringify(formulas)); } catch (e5) {}
+    if (HAS_CLOUD) await _cloud.set(`pfp:f:${userId}`, formulas);
+    _ls.set(`pfp:f:${userId}`, formulas);
   },
+
+  // Per-user custom ingredients
+  async getCustomIngs(userId) {
+    if (HAS_CLOUD) {
+      const r = await _cloud.get(`pfp:i:${userId}`);
+      if (r) { _ls.set(`pfp:i:${userId}`, r); return r; }
+    }
+    return _ls.get(`pfp:i:${userId}`) || [];
+  },
+  async setCustomIngs(userId, ings) {
+    if (HAS_CLOUD) await _cloud.set(`pfp:i:${userId}`, ings);
+    _ls.set(`pfp:i:${userId}`, ings);
+  },
+
+  // Per-user custom medical profiles
+  async getCustomProfiles(userId) {
+    if (HAS_CLOUD) {
+      const r = await _cloud.get(`pfp:p:${userId}`);
+      if (r) { _ls.set(`pfp:p:${userId}`, r); return r; }
+    }
+    return _ls.get(`pfp:p:${userId}`) || [];
+  },
+  async setCustomProfiles(userId, profiles) {
+    if (HAS_CLOUD) await _cloud.set(`pfp:p:${userId}`, profiles);
+    _ls.set(`pfp:p:${userId}`, profiles);
+  },
+
+  // Per-user preferences (defaults, settings)
+  async getPrefs(userId) {
+    if (HAS_CLOUD) {
+      const r = await _cloud.get(`pfp:pref:${userId}`);
+      if (r) return r;
+    }
+    return _ls.get(`pfp:pref:${userId}`) || {};
+  },
+  async setPrefs(userId, prefs) {
+    if (HAS_CLOUD) await _cloud.set(`pfp:pref:${userId}`, prefs);
+    _ls.set(`pfp:pref:${userId}`, prefs);
+  },
+
+  // AI conversation history per user
+  async getAIHistory(userId) {
+    if (HAS_CLOUD) {
+      const r = await _cloud.get(`pfp:ai:${userId}`);
+      if (r) return r;
+    }
+    return _ls.get(`pfp:ai:${userId}`) || [];
+  },
+  async setAIHistory(userId, history) {
+    if (HAS_CLOUD) await _cloud.set(`pfp:ai:${userId}`, history);
+    _ls.set(`pfp:ai:${userId}`, history);
+  },
+
+  // Cloud status indicator
+  isCloud() { return HAS_CLOUD; },
 };
 
 const AVATARS = ['🐶','🐱','🐾','🦴','🐕','🐈','🦮','😺','🐕‍🦺','🐩','🦁','🐯'];
@@ -1350,17 +1486,18 @@ const AVATARS = ['🐶','🐱','🐾','🦴','🐕','🐈','🦮','😺','🐕�
 //  USER GATE — login / register screen
 // ============================================================
 function UserGate({ onLogin, onBack }) {
-  const [screen, setScreen]     = useState('home');   // home | login | register | users
+  const [screen, setScreen]     = useState('home');   // home | login | register
   const [users, setUsers]       = useState({});
   const [loading, setLoading]   = useState(true);
-  const [username, setUsername] = useState('');
-  const [pin, setPin]           = useState('');
-  const [pin2, setPin2]         = useState('');
+  const [name, setName]         = useState('');
+  const [email, setEmail]       = useState('');
+  const [password, setPassword] = useState('');
+  const [password2, setPassword2] = useState('');
   const [avatar, setAvatar]     = useState('🐾');
   const [org, setOrg]           = useState('');
   const [error, setError]       = useState('');
-  const [loginId, setLoginId]   = useState('');
   const [busy, setBusy]         = useState(false);
+  const [showPass, setShowPass] = useState(false);
 
   useEffect(() => {
     DB.getUsers().then(u => { setUsers(u); setLoading(false); });
@@ -1368,14 +1505,49 @@ function UserGate({ onLogin, onBack }) {
 
   const userList = Object.values(users);
 
+  // Simple email validation
+  const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+  // Hash password (basic — production would use bcrypt server-side)
+  const hashPassword = async (pw) => {
+    if (typeof crypto !== 'undefined' && crypto.subtle) {
+      const enc = new TextEncoder().encode(pw + 'pfp_salt_v1');
+      const hash = await crypto.subtle.digest('SHA-256', enc);
+      return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    return pw; // fallback (not secure but test-only)
+  };
+
   const createUser = async () => {
     setError('');
-    if (!username.trim()) return setError('Please enter a display name.');
-    if (pin.length < 4) return setError('PIN must be at least 4 digits.');
-    if (pin !== pin2) return setError('PINs do not match.');
+    if (!name.trim()) return setError('Please enter your full name.');
+    if (!validEmail(email.trim())) return setError('Please enter a valid email address.');
+    if (password.length < 6) return setError('Password must be at least 6 characters.');
+    if (password !== password2) return setError('Passwords do not match.');
+
     setBusy(true);
-    const id = username.trim().toLowerCase().replace(/\s+/g,'-') + '-' + Math.random().toString(36).slice(2,6);
-    const fresh = { id, name: username.trim(), avatar, org: org.trim(), pin, createdAt: new Date().toISOString(), formulaCount: 0 };
+    const emailLower = email.trim().toLowerCase();
+
+    // Check email already used
+    const existing = Object.values(users).find(u => (u.email||'').toLowerCase() === emailLower);
+    if (existing) {
+      setBusy(false);
+      return setError('An account with this email already exists. Please log in instead.');
+    }
+
+    const passHash = await hashPassword(password);
+    const id = 'u_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now().toString(36);
+    const fresh = {
+      id,
+      name: name.trim(),
+      email: emailLower,
+      passHash,
+      avatar,
+      org: org.trim(),
+      createdAt: new Date().toISOString(),
+      lastLogin: new Date().toISOString(),
+      formulaCount: 0,
+    };
     const updated = { ...users, [id]: fresh };
     await DB.setUsers(updated);
     setBusy(false);
@@ -1384,10 +1556,31 @@ function UserGate({ onLogin, onBack }) {
 
   const loginUser = async () => {
     setError('');
-    const user = users[loginId];
-    if (!user) return setError('User not found.');
-    if (user.pin !== pin) return setError('Incorrect PIN.');
-    onLogin(user);
+    if (!validEmail(email.trim())) return setError('Please enter a valid email address.');
+    if (!password) return setError('Please enter your password.');
+
+    setBusy(true);
+    const emailLower = email.trim().toLowerCase();
+    const passHash = await hashPassword(password);
+
+    // Re-fetch users to get latest from cloud (so users created on another device show up)
+    const fresh = await DB.getUsers();
+    setUsers(fresh);
+
+    const user = Object.values(fresh).find(u => (u.email||'').toLowerCase() === emailLower);
+    if (!user) {
+      setBusy(false);
+      return setError('No account found with this email. Please sign up first.');
+    }
+    if (user.passHash !== passHash) {
+      setBusy(false);
+      return setError('Incorrect password.');
+    }
+    // Update last login
+    const updated = { ...fresh, [user.id]: { ...user, lastLogin: new Date().toISOString() } };
+    await DB.setUsers(updated);
+    setBusy(false);
+    onLogin({ ...user, lastLogin: new Date().toISOString() });
   };
 
   const S = {
@@ -1405,7 +1598,7 @@ function UserGate({ onLogin, onBack }) {
     )
   );
 
-  // HOME screen
+  // HOME screen — shows recent users + Sign Up / Login buttons
   if (screen === 'home') return (
     React.createElement('div', { style: S.page,}
       , React.createElement('style', null, `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');input:focus{border-color:#f0a500!important;} button:active{transform:scale(0.97)}`)
@@ -1421,136 +1614,126 @@ function UserGate({ onLogin, onBack }) {
           )
         )
 
-        /* User cards */
+        /* Quick continue cards if there are users */
         , userList.length > 0 && (
           React.createElement('div', { style: { marginBottom:20 },}
-            , React.createElement('div', { style: { fontSize:11, color:C.muted, fontWeight:600, letterSpacing:'0.06em', marginBottom:10, textAlign:'left' },}, "CONTINUE AS" )
-            , React.createElement('div', { style: { display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))', gap:8, marginBottom:12 },}
+            , React.createElement('div', { style: { fontSize:11, color:C.muted, fontWeight:600, letterSpacing:'0.06em', marginBottom:10, textAlign:'left' },}, "RECENT ACCOUNTS"  )
+            , React.createElement('div', { style: { display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:8, marginBottom:12 },}
               , userList.slice(0,6).map(u => (
-                React.createElement('div', { key: u.id, onClick: ()=>{ setLoginId(u.id); setPin(''); setError(''); setScreen('login'); },
-                  style: { background:C.card, border:`1px solid ${C.bord}`, borderRadius:10, padding:'14px 10px', cursor:'pointer', textAlign:'center', transition:'border-color 0.2s' },
+                React.createElement('div', { key: u.id, onClick: ()=>{ setEmail(u.email||''); setPassword(''); setError(''); setScreen('login'); },
+                  style: { background:C.card, border:`1px solid ${C.bord}`, borderRadius:10, padding:'12px 10px', cursor:'pointer', textAlign:'center', transition:'border-color 0.2s' },
                   onMouseEnter: e=>e.currentTarget.style.borderColor=C.amb, onMouseLeave: e=>e.currentTarget.style.borderColor=C.bord,}
-                  , React.createElement('div', { style: { fontSize:28, marginBottom:4 },}, u.avatar||'🐾')
+                  , React.createElement('div', { style: { fontSize:24, marginBottom:4 },}, u.avatar||'🐾')
                   , React.createElement('div', { style: { fontSize:12, fontWeight:600, color:C.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' },}, u.name)
-                  , u.org && React.createElement('div', { style: { fontSize:10, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' },}, u.org)
-                  , React.createElement('div', { style: { fontSize:10, color:C.muted },}, u.formulaCount||0, " formulas" )
+                  , React.createElement('div', { style: { fontSize:10, color:C.muted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' },}, u.email)
+                  , React.createElement('div', { style: { fontSize:10, color:C.muted, marginTop:2 },}, u.formulaCount||0, " formulas" )
                 )
               ))
             )
           )
         )
 
-        , React.createElement('div', { style: { display:'flex', gap:10 },}
-          , React.createElement('button', { onClick: ()=>{ setScreen('register'); setError(''); setUsername(''); setPin(''); setPin2(''); setOrg(''); setAvatar('🐾'); }, style: S.btn(true),}, "✦ Create Account"
-
+        , React.createElement('div', { style: { display:'flex', gap:10, flexDirection:'column' },}
+          , React.createElement('button', { onClick: ()=>{ setScreen('register'); setError(''); setName(''); setEmail(''); setPassword(''); setPassword2(''); setOrg(''); setAvatar('🐾'); }, style: S.btn(true),}, "✦ Create New Account"
           )
-          , userList.length > 0 && React.createElement('button', { onClick: ()=>setScreen('users'), style: { ...S.btn(false), width:'auto', padding:'11px 20px' },}, "Browse All" )
+          , React.createElement('button', { onClick: ()=>{ setScreen('login'); setError(''); setEmail(''); setPassword(''); }, style: S.btn(false),}, "Sign In with Email"   )
         )
-        , React.createElement('div', { style: { marginTop:14, fontSize:11, color:C.muted },}, "Your formulas are saved securely and accessible from any device."         )
+        , React.createElement('div', { style: { marginTop:14, fontSize:11, color:C.muted },}, "🔒 Your formulas, custom ingredients, and AI history are saved to your account and accessible from any device you log in to."         )
         , React.createElement('div', { style: { marginTop:8, fontSize:9, color:'#555', lineHeight:1.4, textAlign:'center', maxWidth:380 },}, "⚠ Disclaimer: PetForm Pro is built for reference & educational purposes only. Not a substitute for professional veterinary nutritional advice. Built by Ruhan Oberoi."        )
         , onBack && React.createElement('div', { style: { marginTop:16 },}, React.createElement('span', { onClick: onBack, style: { fontSize:12, color:C.muted, cursor:'pointer' },}, "← Back to homepage"   ))
       )
     )
   );
 
-  // LOGIN screen
-  if (screen === 'login') {
-    const u = users[loginId];
-    return (
-      React.createElement('div', { style: S.page,}
-        , React.createElement('style', null, `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap');input:focus{border-color:#f0a500!important;}`)
-        , React.createElement('div', { style: S.card,}
-          , React.createElement('button', { onClick: ()=>setScreen('home'), style: { background:'transparent', border:'none', color:C.muted, cursor:'pointer', fontSize:20, marginBottom:12, padding:0 },}, "← Back" )
-          , React.createElement('div', { style: { textAlign:'center', marginBottom:20 },}
-            , React.createElement('div', { style: { fontSize:48, marginBottom:8 },}, _optionalChain([u, 'optionalAccess', _28 => _28.avatar])||'🐾')
-            , React.createElement('div', { style: { fontWeight:700, fontSize:20, color:C.text },}, _optionalChain([u, 'optionalAccess', _29 => _29.name]))
-            , _optionalChain([u, 'optionalAccess', _30 => _30.org]) && React.createElement('div', { style: { fontSize:12, color:C.muted },}, u.org)
-            , React.createElement('div', { style: { fontSize:11, color:C.muted, marginTop:4 },}, _optionalChain([u, 'optionalAccess', _31 => _31.formulaCount])||0, " saved formulas"  )
-          )
-          , error && React.createElement('div', { style: S.err,}, error)
-          , React.createElement('label', { style: S.label,}, "ENTER YOUR PIN"  )
-          , React.createElement('input', { type: "password", inputMode: "numeric", placeholder: "••••", maxLength: 8, value: pin, onChange: e=>setPin(e.target.value.replace(/\D/g,'')),
-            onKeyDown: e=>e.key==='Enter'&&loginUser(), autoFocus: true, style: { ...S.input, textAlign:'center', fontSize:24, letterSpacing:'0.3em' },} )
-          , React.createElement('button', { onClick: loginUser, disabled: busy, style: { ...S.btn(true), marginTop:4 },}
-            , busy ? 'Signing in…' : 'Sign In →'
-          )
-          , React.createElement('div', { style: { marginTop:12, textAlign:'center' },}
-            , React.createElement('span', { style: { fontSize:12, color:C.muted },}, "Not " , _optionalChain([u, 'optionalAccess', _32 => _32.name]), "? " )
-            , React.createElement('span', { onClick: ()=>setScreen('home'), style: { fontSize:12, color:C.amb, cursor:'pointer', fontWeight:600 },}, "Switch user" )
-          )
+  // LOGIN screen — email + password
+  if (screen === 'login') return (
+    React.createElement('div', { style: S.page,}
+      , React.createElement('style', null, `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap');input:focus{border-color:#f0a500!important;}`)
+      , React.createElement('div', { style: S.card,}
+        , React.createElement('button', { onClick: ()=>setScreen('home'), style: { background:'transparent', border:'none', color:C.muted, cursor:'pointer', fontSize:20, marginBottom:12, padding:0 },}, "← Back" )
+        , React.createElement('div', { style: { textAlign:'center', marginBottom:24 },}
+          , React.createElement('div', { style: { fontSize:48, marginBottom:8 },}, "👋")
+          , React.createElement('div', { style: { fontWeight:800, fontSize:22, color:C.text, marginBottom:4 },}, "Welcome Back" )
+          , React.createElement('div', { style: { fontSize:12, color:C.muted },}, "Sign in to access your formulas"   )
+        )
+        , error && React.createElement('div', { style: S.err,}, error)
+
+        , React.createElement('label', { style: S.label,}, "EMAIL ADDRESS" )
+        , React.createElement('input', { type: "email", placeholder: "you@example.com" , value: email, onChange: e=>setEmail(e.target.value),
+          autoFocus: true, autoComplete: "email", style: S.input,
+          onKeyDown: e=>e.key==='Enter'&&document.getElementById('login-pw').focus(),} )
+
+        , React.createElement('label', { style: S.label,}, "PASSWORD")
+        , React.createElement('div', { style: { position:'relative' },}
+          , React.createElement('input', { id: "login-pw", type: showPass?'text':'password', placeholder: "••••••••" , value: password,
+            onChange: e=>setPassword(e.target.value), autoComplete: "current-password",
+            onKeyDown: e=>e.key==='Enter'&&loginUser(),
+            style: { ...S.input, paddingRight:60 },} )
+          , React.createElement('button', { onClick: ()=>setShowPass(!showPass), type: "button",
+            style: { position:'absolute', right:10, top:10, background:'transparent', border:'none', color:C.muted, fontSize:11, cursor:'pointer', fontWeight:600 },}, showPass?'HIDE':'SHOW')
+        )
+
+        , React.createElement('button', { onClick: loginUser, disabled: busy, style: { ...S.btn(true), marginTop:8 },}
+          , busy ? 'Signing in…' : 'Sign In →'
+        )
+
+        , React.createElement('div', { style: { marginTop:16, textAlign:'center', fontSize:12, color:C.muted },}
+          , "Don't have an account? " 
+          , React.createElement('span', { onClick: ()=>{ setScreen('register'); setError(''); setName(''); setPassword(''); setPassword2(''); setOrg(''); setAvatar('🐾'); }, style: { color:C.amb, cursor:'pointer', fontWeight:600 },}, "Sign up free" )
         )
       )
-    );
-  }
+    )
+  );
 
-  // REGISTER screen
+  // REGISTER screen — full email signup
   if (screen === 'register') return (
     React.createElement('div', { style: S.page,}
-      , React.createElement('style', null, `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap');input:focus{border-color:#f0a500!important;select:focus{border-color:#f0a500!important;}`)
+      , React.createElement('style', null, `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap');input:focus{border-color:#f0a500!important;}`)
       , React.createElement('div', { style: { ...S.card, maxWidth:500 },}
         , React.createElement('button', { onClick: ()=>setScreen('home'), style: { background:'transparent', border:'none', color:C.muted, cursor:'pointer', fontSize:20, marginBottom:12, padding:0 },}, "← Back" )
-        , React.createElement('div', { style: { fontWeight:800, fontSize:20, color:C.amb, marginBottom:4 },}, "Create Your Account"  )
-        , React.createElement('div', { style: { fontSize:12, color:C.muted, marginBottom:20 },}, "Your personal workspace to save & manage pet food formulas."         )
+        , React.createElement('div', { style: { fontWeight:800, fontSize:22, color:C.amb, marginBottom:4 },}, "Create Your Account"  )
+        , React.createElement('div', { style: { fontSize:12, color:C.muted, marginBottom:20 },}, "Free forever. No credit card. Your data syncs to any device."          )
         , error && React.createElement('div', { style: S.err,}, error)
 
         /* Avatar picker */
-        , React.createElement('label', { style: S.label,}, "CHOOSE AN AVATAR"  )
+        , React.createElement('label', { style: S.label,}, "PROFILE ICON" )
         , React.createElement('div', { style: { display:'flex', flexWrap:'wrap', gap:6, marginBottom:14 },}
           , AVATARS.map(a => (
-            React.createElement('div', { key: a, onClick: ()=>setAvatar(a), style: { width:40, height:40, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, cursor:'pointer', border:`2px solid ${avatar===a?C.amb:C.bord}`, background: avatar===a?`${C.amb}18`:'transparent', transition:'all 0.15s' },}, a)
+            React.createElement('div', { key: a, onClick: ()=>setAvatar(a), style: { width:38, height:38, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, cursor:'pointer', border:`2px solid ${avatar===a?C.amb:C.bord}`, background: avatar===a?`${C.amb}18`:'transparent', transition:'all 0.15s' },}, a)
           ))
         )
 
-        , React.createElement('label', { style: S.label,}, "DISPLAY NAME *"  )
-        , React.createElement('input', { placeholder: "e.g. Dr. Sarah Chen"   , value: username, onChange: e=>setUsername(e.target.value), autoFocus: true, style: S.input,} )
+        , React.createElement('label', { style: S.label,}, "FULL NAME *" )
+        , React.createElement('input', { placeholder: "e.g. Dr. Sarah Chen"   , value: name, onChange: e=>setName(e.target.value), autoFocus: true, style: S.input,} )
+
+        , React.createElement('label', { style: S.label,}, "EMAIL ADDRESS *" )
+        , React.createElement('input', { type: "email", placeholder: "you@example.com" , value: email, onChange: e=>setEmail(e.target.value), autoComplete: "email", style: S.input,} )
 
         , React.createElement('label', { style: S.label,}, "ORGANISATION / COMPANY "   , React.createElement('span', { style: {color:C.muted,fontWeight:400},}, "(optional)"))
         , React.createElement('input', { placeholder: "e.g. AniNutrition Labs"  , value: org, onChange: e=>setOrg(e.target.value), style: S.input,} )
 
-        , React.createElement('label', { style: S.label,}, "CREATE A PIN (4–8 digits) *"     )
-        , React.createElement('input', { type: "password", inputMode: "numeric", placeholder: "••••", maxLength: 8, value: pin, onChange: e=>setPin(e.target.value.replace(/\D/g,'')), style: S.input,} )
+        , React.createElement('label', { style: S.label,}, "PASSWORD * " , React.createElement('span', { style: {color:C.muted,fontWeight:400},}, "(min 6 chars)"))
+        , React.createElement('div', { style: { position:'relative' },}
+          , React.createElement('input', { type: showPass?'text':'password', placeholder: "Choose a strong password"  , value: password, onChange: e=>setPassword(e.target.value), autoComplete: "new-password", style: { ...S.input, paddingRight:60 },} )
+          , React.createElement('button', { onClick: ()=>setShowPass(!showPass), type: "button", style: { position:'absolute', right:10, top:10, background:'transparent', border:'none', color:C.muted, fontSize:11, cursor:'pointer', fontWeight:600 },}, showPass?'HIDE':'SHOW')
+        )
 
-        , React.createElement('label', { style: S.label,}, "CONFIRM PIN *"  )
-        , React.createElement('input', { type: "password", inputMode: "numeric", placeholder: "••••", maxLength: 8, value: pin2, onChange: e=>setPin2(e.target.value.replace(/\D/g,'')),
+        , React.createElement('label', { style: S.label,}, "CONFIRM PASSWORD *"  )
+        , React.createElement('input', { type: "password", placeholder: "Re-type your password"  , value: password2, onChange: e=>setPassword2(e.target.value), autoComplete: "new-password",
           onKeyDown: e=>e.key==='Enter'&&createUser(), style: S.input,} )
 
-        , React.createElement('div', { style: { fontSize:11, color:C.muted, marginBottom:14, padding:'8px 10px', background:'rgba(240,165,0,0.06)', borderRadius:6, border:`1px solid ${C.amb}20` },}, "🔒 Your data is stored securely. Your PIN protects your formulas from other users on shared devices."
+        , React.createElement('div', { style: { fontSize:11, color:C.muted, marginBottom:14, padding:'8px 10px', background:'rgba(240,165,0,0.06)', borderRadius:6, border:`1px solid ${C.amb}20` },}, "🔒 Your account works on any device. Sign in with your email + password from your phone, laptop, or office computer — your formulas and custom ingredients are always there."
 
         )
 
         , React.createElement('button', { onClick: createUser, disabled: busy, style: S.btn(true),}
           , busy ? 'Creating account…' : '✦ Create Account & Start Formulating'
         )
-      )
-    )
-  );
 
-  // ALL USERS screen
-  if (screen === 'users') return (
-    React.createElement('div', { style: S.page,}
-      , React.createElement('style', null, `@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap');`)
-      , React.createElement('div', { style: { ...S.card, maxWidth:560 },}
-        , React.createElement('button', { onClick: ()=>setScreen('home'), style: { background:'transparent', border:'none', color:C.muted, cursor:'pointer', fontSize:20, marginBottom:16, padding:0 },}, "← Back" )
-        , React.createElement('div', { style: { fontWeight:800, fontSize:18, color:C.text, marginBottom:16 },}, "All Users ("  , userList.length, ")")
-        , React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:8, maxHeight:360, overflowY:'auto' },}
-          , userList.map(u => (
-            React.createElement('div', { key: u.id, onClick: ()=>{ setLoginId(u.id); setPin(''); setError(''); setScreen('login'); },
-              style: { display:'flex', alignItems:'center', gap:12, padding:'10px 14px', background:C.card, border:`1px solid ${C.bord}`, borderRadius:10, cursor:'pointer' },
-              onMouseEnter: e=>e.currentTarget.style.borderColor=C.amb, onMouseLeave: e=>e.currentTarget.style.borderColor=C.bord,}
-              , React.createElement('div', { style: { fontSize:28 },}, u.avatar||'🐾')
-              , React.createElement('div', { style: { flex:1 },}
-                , React.createElement('div', { style: { fontWeight:600, fontSize:14 },}, u.name)
-                , u.org && React.createElement('div', { style: { fontSize:11, color:C.muted },}, u.org)
-              )
-              , React.createElement('div', { style: { textAlign:'right', fontSize:11, color:C.muted },}
-                , React.createElement('div', null, u.formulaCount||0, " formulas" )
-                , React.createElement('div', null, new Date(u.createdAt).toLocaleDateString())
-              )
-            )
-          ))
+        , React.createElement('div', { style: { marginTop:14, textAlign:'center', fontSize:12, color:C.muted },}
+          , "Already have an account? " 
+          , React.createElement('span', { onClick: ()=>{ setScreen('login'); setError(''); setPassword(''); }, style: { color:C.amb, cursor:'pointer', fontWeight:600 },}, "Sign in" )
         )
-        , React.createElement('button', { onClick: ()=>{ setScreen('register'); setError(''); setUsername(''); setPin(''); setPin2(''); setOrg(''); setAvatar('🐾'); },
-          style: { ...S.btn(true), marginTop:14 },}, "+ Create New Account"   )
       )
     )
   );
@@ -1935,6 +2118,10 @@ function PetFoodFormulator({ currentUser, onLogout }) {
   const [importCode, setImportCode]             = useState('');
   const [importError, setImportError]           = useState('');
   const [showImportModal, setShowImportModal]   = useState(false);
+  const [showIngImport, setShowIngImport]       = useState(false);
+  const [ingImportText, setIngImportText]       = useState('');
+  const [ingImportError, setIngImportError]     = useState('');
+  const [ingImportPreview, setIngImportPreview] = useState(null);
   const [printMode, setPrintMode]               = useState(false);
   // ---- MEDICAL CONDITION ----
   const [medCondId, setMedCondId]       = useState('none');
@@ -1955,6 +2142,14 @@ function PetFoodFormulator({ currentUser, onLogout }) {
   });
   const aiChatRef = useRef(null);
 
+  // ---- AI ANALYSER (separate from Builder) ----
+  const [analyserMessages, setAnalyserMessages] = useState([]);
+  const [analyserInput, setAnalyserInput]       = useState('');
+  const [analyserLoading, setAnalyserLoading]   = useState(false);
+  const [analyserError, setAnalyserError]       = useState('');
+  const [analyserMode, setAnalyserMode]         = useState('quick'); // quick | chat | improve
+  const analyserChatRef = useRef(null);
+
   // ---- USDA DATABASE ----
   const [showUSDA, setShowUSDA]         = useState(false);
   const [usdaQuery, setUsdaQuery]       = useState('');
@@ -1964,7 +2159,7 @@ function PetFoodFormulator({ currentUser, onLogout }) {
   const [usdaSelected, setUsdaSelected] = useState(null);
   // ---- CUSTOM COMPLIANCE ----
   const [customReqOverrides, setCustomReqOverrides] = useState({});
-  const [customProfiles, setCustomProfiles] = useState(() => { try { return JSON.parse(localStorage.getItem('pfp:customProfiles') || '[]'); } catch (e6) { return []; } });
+  const [customProfiles, setCustomProfiles] = useState([]);
   const [showEditReqsModal, setShowEditReqsModal] = useState(false);
   const [editReqBuffer, setEditReqBuffer] = useState({});
   const [saveProfileName, setSaveProfileName] = useState('');
@@ -2771,12 +2966,16 @@ function PetFoodFormulator({ currentUser, onLogout }) {
     if (aiChatRef.current) aiChatRef.current.scrollTop = aiChatRef.current.scrollHeight;
   }, [aiMessages]);
 
-  const AI_SYSTEM = `You are PetForm Pro's AI Formula Assistant — an expert in companion animal nutrition, AAFCO 2023, and FEDIAF 2023 standards. Your job is to help users build complete, balanced pet food formulas.
+  const AI_SYSTEM = `You are PetForm Pro's AI Formula Builder — an expert veterinary nutritionist specializing in AAFCO 2023, FEDIAF 2023, and NRC standards for dogs and cats. Your job is to help users design complete, balanced, and safe pet food formulas.
 
-When a user describes their formula goals, you must output a JSON block wrapped in <FORMULA> tags, like this:
+═══════════════════════════════════════════════════════════
+WHEN GENERATING A FORMULA, ALWAYS OUTPUT A JSON BLOCK
+═══════════════════════════════════════════════════════════
+Wrap the formula in <FORMULA> tags exactly like this:
+
 <FORMULA>
 {
-  "name": "Formula name",
+  "name": "Adult Dog Maintenance Kibble",
   "species": "dog",
   "lifeStage": "adult",
   "foodFormat": "kibble",
@@ -2786,26 +2985,124 @@ When a user describes their formula goals, you must output a JSON block wrapped 
     {"id": "chicken_fat", "amount": 80},
     {"id": "beet_pulp", "amount": 40},
     {"id": "salmon_oil", "amount": 15},
-    {"id": "dog_premix", "amount": 5}
+    {"id": "dog_premix", "amount": 8}
   ],
-  "notes": "Brief note about the formula"
+  "notes": "Balanced adult maintenance formula with quality animal protein."
 }
 </FORMULA>
 
-Valid ingredient IDs: chicken_meal, beef_meal, fish_meal, lamb_meal, pea_protein, fresh_chicken, ground_corn, brown_rice, oats, sweet_potato, chicken_fat, salmon_oil, flaxseed, beet_pulp, soybean_meal, dog_premix, cat_premix, limestone, dicalcium_phos.
+═══════════════════════════════════════════════════════════
+COMPLETE INGREDIENT CATALOG (51 INGREDIENTS) — USE THESE EXACT IDs
+═══════════════════════════════════════════════════════════
 
-Valid species: dog, cat
-Valid lifeStage: adult, puppy, kitten, largePuppy, pregnant, senior, allLifeStages
-Valid foodFormat: kibble, airDried, freezeDried, frozenRaw, barf, freshCooked, roll, wetCanned, treat, dehydrated
+PROTEINS (animal-based first):
+- chicken_meal (65% protein, $2.50/kg) — primary protein, highly digestible
+- chicken_fresh (20% protein, $3.20/kg) — fresh poultry, premium feel
+- turkey_meal (62% protein, $2.80/kg) — leaner alternative to chicken
+- duck_meal (55% protein, $4.50/kg) — novel protein for sensitive dogs
+- beef_meal (56% protein, $2.80/kg) — common allergen, watch ash
+- lamb_meal (58% protein, $3.50/kg) — moderate allergenicity
+- pork_meal (54% protein, $2.60/kg) — uncommon, good for elimination
+- venison_meal (58% protein, $6.00/kg) — novel, hypoallergenic
+- rabbit_meal (60% protein, $5.50/kg) — novel, ideal for elimination diets
+- fish_meal (60% protein, $3.00/kg) — high in iodine, limit to 25%
+- salmon_meal (62% protein, $4.00/kg) — rich in EPA/DHA naturally
+- chicken_liver (52% protein, $4.80/kg) — palatability boost, MAX 5–10% (vit A!)
+- beef_heart (55% protein, $5.00/kg) — taurine and CoQ10
+- green_lipped_mussel (48% protein, $25/kg) — joint support, MAX 2%
+- egg_powder (47% protein, $5.50/kg) — highest BV protein
+- whey_protein (80% protein, $4.20/kg) — supplemental protein
+- soybean_meal (47% protein, $0.90/kg) — plant protein, has anti-nutrients
+- pea_protein (78% protein, $2.00/kg) — plant protein, FDA DCM concern
 
-Rules:
-- Amounts are in grams. Total should be close to 1000g.
-- Always include dog_premix or cat_premix for micronutrient completeness (5–10g)
-- For fat sources include chicken_fat or salmon_oil
-- For fibre include beet_pulp
-- Always explain your formula choices before/after the JSON in plain language
-- If asking for a therapeutic/medical diet, flag critical nutrient targets
-- Be friendly, expert, and concise`;
+GRAINS & CARBS:
+- brown_rice (8% protein, $0.80/kg) — gentle, well-tolerated
+- white_rice (7% protein, $0.50/kg) — bland diet, brewer's rice
+- ground_corn (9% protein, $0.50/kg) — energy, common allergen myth
+- oats (12% protein, $0.70/kg) — beta-glucan fiber
+- barley (12.5% protein, $0.60/kg) — moderate carbs
+- whole_wheat (13% protein, $0.40/kg) — common allergen for some
+- sweet_potato (4% protein, $1.50/kg) — vit A, prebiotic
+- potato_starch (0.5% protein, $0.90/kg) — pure starch binder
+- tapioca (0.2% protein, $0.80/kg) — starch source, grain-free
+- peas_whole (24% protein, $0.70/kg) — DCM concern, limit total legumes
+- chickpeas (21% protein, $0.90/kg) — legume, DCM concern
+- lentils (26% protein, $0.80/kg) — legume, DCM concern
+
+FATS & OILS:
+- chicken_fat ($1.80/kg) — best palatability, kibble-friendly
+- salmon_oil ($6.00/kg) — high EPA/DHA, MAX 5%
+- coconut_oil ($3.50/kg) — MCTs, good for cognitive
+- sunflower_oil ($1.50/kg) — high linoleic acid
+- fish_oil ($5.00/kg) — generic omega-3
+- flaxseed ($2.20/kg) — plant ALA, MAX 8%
+
+FIBER SOURCES:
+- beet_pulp ($0.60/kg) — moderate fermentable, MAX 8%
+- pumpkin_dried ($2.50/kg) — soothing, prebiotic
+- psyllium_husk ($5.00/kg) — soluble fiber, MAX 5%
+
+PREMIXES & SUPPLEMENTS (CRITICAL — always include 5–10g of premix):
+- dog_premix ($12.00/kg) — vitamin/mineral blend for dogs
+- cat_premix ($14.00/kg) — has taurine, arachidonic, vit A
+- yeast_brewers ($2.00/kg) — B-vitamins, palatability
+- dl_methionine ($8.00/kg) — supplemental amino acid
+- l_lysine ($6.00/kg) — supplemental amino acid
+- taurine_powder ($15.00/kg) — for cats; also for at-risk DCM dogs
+- choline_chloride ($4.00/kg) — choline supplementation
+
+MINERALS:
+- limestone ($0.30/kg) — calcium source, MAX 3%
+- dicalcium_phos ($0.80/kg) — Ca + P, MAX 4%
+- salt ($0.20/kg) — palatability, sodium, MAX 1%
+- potassium_chloride ($0.60/kg) — K supplementation
+- kelp_meal ($2.00/kg) — iodine, MAX 1% (very concentrated!)
+
+═══════════════════════════════════════════════════════════
+VALID FIELD VALUES
+═══════════════════════════════════════════════════════════
+species: "dog" or "cat"
+lifeStage: "adult", "puppy", "kitten", "largePuppy", "pregnant", "senior", "allLifeStages"
+foodFormat: "kibble", "airDried", "freezeDried", "frozenRaw", "barf", "freshCooked", "roll", "wetCanned", "treat", "dehydrated"
+
+═══════════════════════════════════════════════════════════
+FORMULATION RULES
+═══════════════════════════════════════════════════════════
+1. Total should be ~1000g (within 950–1050g)
+2. ALWAYS include species-appropriate premix (5–10g): dog_premix or cat_premix
+3. Cats need taurine (use cat_premix or taurine_powder, plus salmon_meal/fish_meal)
+4. Cats are obligate carnivores — protein should be ≥40% DM (animal-based dominant)
+5. Include fat source: chicken_fat (palatability) and/or salmon_oil (omega-3)
+6. Include fiber: beet_pulp 2–6% (moderate fermentable)
+7. For kibble: keep moisture-rich ingredients ≤30% and fat ≤20% DM (extrusion limits)
+8. For BARF/raw: skip starches, increase animal organs (liver, heart)
+9. For wet/canned: ingredients can be fresh meats; add water as needed
+10. Ca:P ratio MUST be 1:1 to 2:1 (use limestone + dicalcium_phos to balance)
+11. Watch FDA DCM warning: total legumes (peas+lentils+chickpeas+pea_protein) <25%
+12. Liver max 10% (vitamin A toxicity above this)
+13. Fish meal max 25% (iodine concerns)
+14. Salmon oil max 5% (omega-3 excess affects coagulation)
+
+═══════════════════════════════════════════════════════════
+LIFE-STAGE-SPECIFIC GUIDANCE
+═══════════════════════════════════════════════════════════
+PUPPIES/KITTENS: 22–32% protein DM, 8–17% fat DM, Ca 1.0–1.8% DM
+LARGE BREED PUPPIES: Ca strict 1.0–1.6% DM (NEVER above 1.8%, joint risk!)
+ADULT DOGS: 18–30% protein, 5.5–20% fat, Ca 0.5–1.8%
+ADULT CATS: 26–45% protein, 9–25% fat, taurine 0.1–0.2%
+SENIOR: lower phosphorus (<0.8% DM ideal), moderate protein, joint support
+PREGNANT/LACTATING: ~50% more energy, higher protein
+
+═══════════════════════════════════════════════════════════
+RESPONSE STYLE
+═══════════════════════════════════════════════════════════
+1. Acknowledge their goal in 1 sentence
+2. Output the <FORMULA> JSON
+3. Explain your top 3 ingredient choices and WHY (1–2 lines each)
+4. Note any concerns or trade-offs
+5. End with a "Next steps" hint (e.g. "Open the Compliance tab to verify against AAFCO standards")
+
+Be friendly, expert, and concise. Use scientific reasoning. Do NOT add ingredients NOT in the catalog above.`;
 
   const sendAIMessage = async (userText) => {
     if (!userText.trim() || aiLoading) return;
@@ -2815,17 +3112,12 @@ Rules:
     setAiLoading(true);
     setAiError('');
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({
-          model:'claude-sonnet-4-20250514',
-          max_tokens:1200,
-          system: AI_SYSTEM,
-          messages: newMessages,
-        }),
+      const data = await callAI({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1200,
+        system: AI_SYSTEM,
+        messages: newMessages,
       });
-      const data = await res.json();
       if (data.error) throw new Error(data.error.message);
       const reply = _optionalChain([data, 'access', _69 => _69.content, 'optionalAccess', _70 => _70[0], 'optionalAccess', _71 => _71.text]) || '';
       setAiMessages(prev => [...prev, { role:'assistant', content: reply }]);
@@ -2835,7 +3127,14 @@ Rules:
         try {
           const f = JSON.parse(match[1].trim());
           if (_optionalChain([f, 'access', _72 => _72.ingredients, 'optionalAccess', _73 => _73.length])) {
-            const newRecipe = f.ingredients.map(r => ({ id: Date.now()+Math.random(), ingId: r.id, amount: r.amount }));
+            // Validate ingredient IDs against catalog — drop unknowns and warn
+            const validIngs = f.ingredients.filter(r => allIngredients.find(a => a.id === r.id));
+            const droppedIngs = f.ingredients.filter(r => !allIngredients.find(a => a.id === r.id));
+            if (droppedIngs.length > 0) {
+              const droppedNames = droppedIngs.map(d => d.id).join(', ');
+              setAiMessages(prev => [...prev, { role:'assistant', content: `⚠️ Note: Ignored unknown ingredient(s): ${droppedNames}. The formula was loaded with ${validIngs.length} valid ingredients.` }]);
+            }
+            const newRecipe = validIngs.map(r => ({ id: Date.now()+Math.random(), ingId: r.id, amount: parseFloat(r.amount) || 0 }));
             setRecipe(newRecipe);
             if (f.name) setRecipeName(f.name);
             if (f.species) setSpecies(f.species);
@@ -2843,13 +3142,187 @@ Rules:
             if (f.foodFormat) setFoodFormat(f.foodFormat);
             if (f.notes) setFormulaNotes(f.notes);
           }
-        } catch (e9) {}
+        } catch (e9) {
+          setAiError('Formula JSON parse error: ' + e9.message + '. The AI generated invalid JSON.');
+        }
       }
     } catch(e) {
       setAiError('AI error: ' + e.message);
     }
     setAiLoading(false);
   };
+
+  // ============================================================
+  //  AI ANALYSER — analyzes current formula with full context
+  // ============================================================
+  const buildFormulaContext = useCallback(() => {
+    if (!calc || !recipe.length) return null;
+    const ctx = {
+      formulaName: recipeName,
+      species, lifeStage, standard, foodFormat,
+      animalWeight, neutered,
+      ingredients: recipe.map(row => {
+        const ing = allIngredients.find(i => i.id === row.ingId);
+        const pct = calc.totalW > 0 ? (row.amount / calc.totalW * 100).toFixed(1) : '0';
+        return { name: _optionalChain([ing, 'optionalAccess', _ai1 => _ai1.name]) || row.ingId, grams: row.amount, percent: pct };
+      }),
+      asFedAnalysis: {
+        protein: calc.asFed.protein.toFixed(2)+'%',
+        fat: calc.asFed.fat.toFixed(2)+'%',
+        fiber: calc.asFed.fiber.toFixed(2)+'%',
+        moisture: calc.asFed.moisture.toFixed(2)+'%',
+        ash: calc.asFed.ash.toFixed(2)+'%',
+        nfeCarbs: nfeAsFed.toFixed(2)+'%',
+        kcalPerKg: Math.round(calc.afKcalPerKg),
+      },
+      dryMatterAnalysis: {
+        protein: calc.dm.protein.toFixed(2)+'%',
+        fat: calc.dm.fat.toFixed(2)+'%',
+        fiber: calc.dm.fiber.toFixed(2)+'%',
+        ash: calc.dm.ash.toFixed(2)+'%',
+        nfe: calc.dmNFE.toFixed(2)+'%',
+        calcium: calc.dm.calcium.toFixed(2)+'%',
+        phosphorus: calc.dm.phosphorus.toFixed(2)+'%',
+        caPRatio: calc.caPRatio.toFixed(2)+':1',
+        sodium: calc.dm.sodium.toFixed(3)+'%',
+        potassium: calc.dm.potassium.toFixed(2)+'%',
+        magnesium: calc.dm.magnesium.toFixed(3)+'%',
+      },
+      fattyAcids: {
+        linoleicAcid: (calc.dm.linoleicAcid||0).toFixed(2)+'% DM',
+        ALA: (calc.dm.alphaLinolenic||0).toFixed(3)+'% DM',
+        EPA: (calc.dm.epa||0).toFixed(3)+'% DM',
+        DHA: (calc.dm.dha||0).toFixed(3)+'% DM',
+        AA: (calc.dm.arachidonicAcid||0).toFixed(3)+'% DM',
+        omega6to3Ratio: _optionalChain([safetyReport, 'optionalAccess', _ai2 => _ai2.omega63Ratio]) ? safetyReport.omega63Ratio.toFixed(1)+':1' : 'N/A',
+      },
+      vitamins: {
+        vitaminA: Math.round(calc.dm.vitaminA||0)+' IU/kg',
+        vitaminD: Math.round(calc.dm.vitaminD||0)+' IU/kg',
+        vitaminE: Math.round(calc.dm.vitaminE||0)+' IU/kg',
+        thiamine: (calc.dm.thiamine||0).toFixed(1)+' mg/kg',
+        choline: Math.round(calc.dm.choline||0)+' mg/kg',
+      },
+      minerals: {
+        iron: Math.round(calc.dm.iron||0)+' mg/kg',
+        copper: (calc.dm.copper||0).toFixed(1)+' mg/kg',
+        zinc: Math.round(calc.dm.zinc||0)+' mg/kg',
+        iodine: (calc.dm.iodine||0).toFixed(2)+' mg/kg',
+        selenium: (calc.dm.selenium||0).toFixed(2)+' mg/kg',
+      },
+      aminoAcids: {
+        taurine: (calc.dm.taurine||0).toFixed(3)+'%',
+        methionine: (calc.dm.methionine||0).toFixed(2)+'%',
+        lysine: (calc.dm.lysine||0).toFixed(2)+'%',
+        arginine: (calc.dm.arginine||0).toFixed(2)+'%',
+      },
+      compliance: {
+        standard,
+        ok: compSummary.ok,
+        deficient: compSummary.def,
+        excess: compSummary.exc,
+        deficientNutrients: Object.entries(compliance).filter(([k,v]) => v==='deficient').map(([k]) => _optionalChain([N, 'access', _ai3 => _ai3.find, 'call', _ai4 => _ai4(n=>n.k===k), 'optionalAccess', _ai5 => _ai5.l])).filter(Boolean),
+        excessNutrients: Object.entries(compliance).filter(([k,v]) => v==='excess').map(([k]) => _optionalChain([N, 'access', _ai6 => _ai6.find, 'call', _ai7 => _ai7(n=>n.k===k), 'optionalAccess', _ai8 => _ai8.l])).filter(Boolean),
+      },
+      safetyAnalysis: safetyReport ? {
+        digestibilityScore: safetyReport.digScore.toFixed(0)+'%',
+        palatabilityScore: (species==='dog'?safetyReport.palDogScore:safetyReport.palCatScore).toFixed(0)+'%',
+        warningsCount: safetyReport.warnings.length,
+        criticalWarnings: safetyReport.warnings.filter(w=>w.severity==='critical').map(w => w.title),
+        highWarnings: safetyReport.warnings.filter(w=>w.severity==='high').map(w => w.title),
+        interactions: safetyReport.interactions.map(i => i.msg.substring(0, 120)),
+        legumePercent: safetyReport.legumePct.toFixed(1)+'%',
+      } : null,
+      cost: costStats ? '$'+costStats.totalCostPer1kg.toFixed(2)+'/kg of finished product' : 'N/A',
+      medicalCondition: medCondId !== 'none' ? _optionalChain([MEDICAL_CONDITIONS, 'access', _ai9 => _ai9[medCondId], 'optionalAccess', _ai10 => _ai10.name]) : 'None / standard maintenance',
+    };
+    return ctx;
+  }, [calc, recipe, allIngredients, recipeName, species, lifeStage, standard, foodFormat, animalWeight, neutered, nfeAsFed, safetyReport, compliance, compSummary, costStats, medCondId]);
+
+  const ANALYSER_SYSTEM = `You are a board-certified veterinary nutritionist (DACVN-equivalent) analysing pet food formulas for PetForm Pro users.
+
+Your role is to provide expert, actionable analysis of formulas — NOT to generate new ones.
+
+When given a formula context, you should:
+1. Provide a concise OVERALL ASSESSMENT (1–2 sentences: is this formula adequate, problematic, or excellent?)
+2. Identify the top 3 STRENGTHS of the formula
+3. Identify the top 3-5 WEAKNESSES or RISKS, with specific clinical reasoning
+4. Recommend SPECIFIC ACTIONS (e.g., "Reduce limestone from 2.5% to 1.8% to bring calcium under AAFCO max")
+5. If asked, suggest INGREDIENT SWAPS with reasoning
+6. Reference AAFCO/FEDIAF/NRC standards when relevant
+
+Format your response with clear markdown headings: ## Overall Assessment, ## Strengths, ## Concerns, ## Recommendations.
+
+Be specific with numbers. Don't say "increase fat" — say "increase fat from 12% to 15-17% DM". Don't say "could be better" — explain WHY.
+
+Be honest when a formula is excellent; don't manufacture concerns. Equally, be direct when something is dangerous.
+
+Always end with a single-line "Bottom Line:" summarising your verdict in plain language for a non-expert pet owner.
+
+Remember: This is for reference & education. The user understands you're an AI assistant, not a substitute for in-person veterinary consultation.`;
+
+  const sendAnalyserMessage = async (userText, options = {}) => {
+    const ctx = buildFormulaContext();
+    if (!ctx) {
+      setAnalyserError('Add ingredients to your formula before running an analysis.');
+      return;
+    }
+    if (!userText.trim() || analyserLoading) return;
+
+    const contextBlock = `\n\n[CURRENT FORMULA CONTEXT — JSON]\n${JSON.stringify(ctx, null, 2)}\n[END CONTEXT]`;
+    const isFirst = analyserMessages.length === 0;
+    const messageContent = isFirst ? userText + contextBlock : userText;
+
+    const newMessages = [...analyserMessages, { role: 'user', content: messageContent, displayContent: userText }];
+    setAnalyserMessages(newMessages);
+    setAnalyserInput('');
+    setAnalyserLoading(true);
+    setAnalyserError('');
+
+    try {
+      const data = await callAI({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1500,
+        system: ANALYSER_SYSTEM,
+        messages: newMessages.map(m => ({ role: m.role, content: m.content })),
+      });
+      if (data.error) throw new Error(data.error.message);
+      const reply = _optionalChain([data, 'access', _ar1 => _ar1.content, 'optionalAccess', _ar2 => _ar2[0], 'optionalAccess', _ar3 => _ar3.text]) || '';
+      setAnalyserMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+    } catch (e) {
+      setAnalyserError('Analyser error: ' + e.message);
+    }
+    setAnalyserLoading(false);
+  };
+
+  const runQuickAnalysis = () => {
+    const ctx = buildFormulaContext();
+    if (!ctx) { setAnalyserError('Add ingredients to your formula before running an analysis.'); return; }
+    setAnalyserMessages([]);
+    sendAnalyserMessage(`Please provide a comprehensive nutritional analysis of this ${species} formula. I want to know: is this formula safe and balanced for ${ctx.species} at the ${ctx.lifeStage} life stage? What are the strengths and weaknesses? Are there any urgent issues I should fix?`);
+  };
+
+  const runImproveAnalysis = () => {
+    const ctx = buildFormulaContext();
+    if (!ctx) { setAnalyserError('Add ingredients to your formula before running an analysis.'); return; }
+    setAnalyserMessages([]);
+    sendAnalyserMessage(`Please suggest specific improvements to this formula. For each issue, recommend a concrete action — e.g. "increase X by Y grams" or "swap A for B because Z". Prioritize by impact: critical safety issues first, then nutrient deficiencies, then optimization opportunities.`);
+  };
+
+  // Auto-scroll analyser chat
+  useEffect(() => {
+    if (analyserChatRef.current) analyserChatRef.current.scrollTop = analyserChatRef.current.scrollHeight;
+  }, [analyserMessages, analyserLoading]);
+
+  // Persist AI history per user
+  useEffect(() => {
+    if (!currentUser || !currentUser.id) return;
+    if (analyserMessages.length === 0) return;
+    const tid = setTimeout(() => {
+      DB.setAIHistory(currentUser.id, analyserMessages.slice(-20)); // last 20 messages
+    }, 1000);
+    return () => clearTimeout(tid);
+  }, [analyserMessages, currentUser.id]);
 
   const runWizard = async () => {
     const g = wizardGoals;
@@ -2871,10 +3344,52 @@ Please generate a balanced starting formula, explain your ingredient choices, an
     await sendAIMessage(prompt);
   };
 
-  // Load saved formulas from storage on mount
+  // Load all user-specific data from persistent storage on mount
   useEffect(() => {
-    DB.getFormulas(currentUser.id).then(f => setSavedFormulas(f || []));
+    if (!currentUser || !currentUser.id) return;
+    let mounted = true;
+    (async () => {
+      const [formulas, ings, profiles, prefs, aiHist] = await Promise.all([
+        DB.getFormulas(currentUser.id),
+        DB.getCustomIngs(currentUser.id),
+        DB.getCustomProfiles(currentUser.id),
+        DB.getPrefs(currentUser.id),
+        DB.getAIHistory(currentUser.id),
+      ]);
+      if (!mounted) return;
+      setSavedFormulas(formulas || []);
+      setCustomIngs(ings || []);
+      setCustomProfiles(profiles || []);
+      if (aiHist && aiHist.length) setAiMessages(aiHist);
+      // Apply prefs if any
+      if (prefs && prefs.species) setSpecies(prefs.species);
+      if (prefs && prefs.lifeStage) setLifeStage(prefs.lifeStage);
+      if (prefs && prefs.standard) setStandard(prefs.standard);
+      if (prefs && prefs.foodFormat) setFoodFormat(prefs.foodFormat);
+    })();
+    return () => { mounted = false; };
   }, [currentUser.id]);
+
+  // Persist custom ingredients whenever they change
+  useEffect(() => {
+    if (!currentUser || !currentUser.id) return;
+    DB.setCustomIngs(currentUser.id, customIngs);
+  }, [customIngs, currentUser.id]);
+
+  // Persist custom profiles
+  useEffect(() => {
+    if (!currentUser || !currentUser.id) return;
+    DB.setCustomProfiles(currentUser.id, customProfiles);
+  }, [customProfiles, currentUser.id]);
+
+  // Persist user preferences (defaults)
+  useEffect(() => {
+    if (!currentUser || !currentUser.id) return;
+    const tid = setTimeout(() => {
+      DB.setPrefs(currentUser.id, { species, lifeStage, standard, foodFormat });
+    }, 600);
+    return () => clearTimeout(tid);
+  }, [species, lifeStage, standard, foodFormat, currentUser.id]);
 
   const initNewCustom = () => {
     const blank = {};
@@ -2950,6 +3465,7 @@ Please generate a balanced starting formula, explain your ingredient choices, an
     { id:'safety',     label:'🛡️ Safety & Quality' },
     { id:'compliance', label:'⚖️ Compliance' },
     { id:'medical',    label:'🏥 Medical' },
+    { id:'aianalyser', label:'🧠 AI Analyser' },
     { id:'ai',         label:'🤖 AI Builder' },
     { id:'claims',     label:'🏆 Claims' },
     { id:'label',      label:'🏷️ Label & Export' },
@@ -2959,14 +3475,15 @@ Please generate a balanced starting formula, explain your ingredient choices, an
 
   // ---- RENDER ----
   return (
-    React.createElement('div', { style: { display:'flex', height:'100vh', background:C.bg, color:C.text, fontFamily:"'DM Sans', 'Segoe UI', sans-serif", overflow:'hidden' },}
+    React.createElement('div', { className: "main-app", style: { background:C.bg, color:C.text, fontFamily:"'DM Sans', 'Segoe UI', sans-serif" },}
       , React.createElement('style', null, `
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
-        ::-webkit-scrollbar{width:5px;height:5px} ::-webkit-scrollbar-track{background:#0d1117} ::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
+        html,body{margin:0;padding:0;min-height:100vh;overflow-x:hidden;}
+        ::-webkit-scrollbar{width:8px;height:8px} ::-webkit-scrollbar-track{background:#0d1117} ::-webkit-scrollbar-thumb{background:#30363d;border-radius:4px} ::-webkit-scrollbar-thumb:hover{background:#484f58}
         input[type=number]::-webkit-inner-spin-button{opacity:0.5}
         .ing-row:hover{background:rgba(240,165,0,0.05)!important}
         .rec-row:hover{background:rgba(255,255,255,0.02)!important}
-        .tab-btn{transition:all 0.2s}
+        .tab-btn{transition:all 0.2s; flex-shrink:0;}
         .tab-btn:hover{color:#f0a500!important}
         .comp-row:hover{background:rgba(255,255,255,0.03)!important}
         .add-btn:hover{background:rgba(240,165,0,0.15)!important}
@@ -2974,6 +3491,19 @@ Please generate a balanced starting formula, explain your ingredient choices, an
         button:active{transform:scale(0.97)}
         .bounce{animation:bounce 0.3s ease}
         @keyframes bounce{0%{transform:scale(1)}50%{transform:scale(1.05)}100%{transform:scale(1)}}
+        .tabs-scroll{overflow-x:auto; overflow-y:hidden; scrollbar-width:thin;}
+        .tabs-scroll::-webkit-scrollbar{height:3px}
+        .main-app{display:flex; min-height:100vh;}
+        .sidebar{width:260px; flex-shrink:0;}
+        .main-content{flex:1; min-width:0; display:flex; flex-direction:column;}
+        @media (max-width:1024px) {
+          .sidebar{width:240px;}
+        }
+        @media (max-width:768px) {
+          .main-app{flex-direction:column;}
+          .sidebar{width:100%; max-height:none; border-right:none; border-bottom:1px solid #30363d;}
+          .tab-btn{padding:10px 14px!important; font-size:12px!important;}
+        }
         @media print {
           body{background:#fff!important;color:#000!important;}
           .no-print{display:none!important;}
@@ -2983,7 +3513,7 @@ Please generate a balanced starting formula, explain your ingredient choices, an
       `)
 
       /* ===== LEFT SIDEBAR ===== */
-      , React.createElement('div', { style: { width:260, background:C.surf, borderRight:`1px solid ${C.bord}`, display:'flex', flexDirection:'column', flexShrink:0, overflowY:'auto' },}
+      , React.createElement('div', { className: "sidebar", style: { background:C.surf, borderRight:`1px solid ${C.bord}`, display:'flex', flexDirection:'column' },}
         /* Header */
         , React.createElement('div', { style: { padding:'14px 14px 10px', borderBottom:`1px solid ${C.bord}` },}
           , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:8, marginBottom:8 },}
@@ -3188,33 +3718,34 @@ Please generate a balanced starting formula, explain your ingredient choices, an
       )
 
       /* ===== MAIN CONTENT ===== */
-      , React.createElement('div', { style: { flex:1, display:'flex', flexDirection:'column', overflow:'hidden' },}
+      , React.createElement('div', { className: "main-content", style: { background:C.bg },}
         /* Tab Bar */
-        , React.createElement('div', { style: { display:'flex', gap:0, background:C.surf, borderBottom:`1px solid ${C.bord}`, padding:'0 16px', flexShrink:0 },}
+        , React.createElement('div', { className: "tabs-scroll", style: { display:'flex', gap:0, background:C.surf, borderBottom:`1px solid ${C.bord}`, padding:'0 16px', flexShrink:0, position:'sticky', top:0, zIndex:30, alignItems:'center' },}
           , TABS.map(tab =>
             React.createElement('button', { key: tab.id, className: "tab-btn", onClick: ()=>setActiveTab(tab.id),
-              style: { padding:'14px 18px', background:'transparent', border:'none', borderBottom:`2px solid ${activeTab===tab.id?C.amb:'transparent'}`, color:activeTab===tab.id?C.amb:C.muted, cursor:'pointer', fontWeight:activeTab===tab.id?600:400, fontSize:13, transition:'all 0.2s', whiteSpace:'nowrap' },}
+              style: { padding:'14px 16px', background:'transparent', border:'none', borderBottom:`2px solid ${activeTab===tab.id?C.amb:'transparent'}`, color:activeTab===tab.id?C.amb:C.muted, cursor:'pointer', fontWeight:activeTab===tab.id?600:400, fontSize:13, transition:'all 0.2s', whiteSpace:'nowrap' },}
               , tab.label
             )
           )
-          , React.createElement('div', { style: { marginLeft:'auto', display:'flex', alignItems:'center', gap:6, padding:'0 4px' }, className: "no-print",}
-            , calc && React.createElement('span', { style: { fontSize:11, color:C.muted },}, "Total: "
+          , React.createElement('div', { style: { marginLeft:'auto', display:'flex', alignItems:'center', gap:6, padding:'0 4px', flexShrink:0 }, className: "no-print",}
+            , calc && React.createElement('span', { style: { fontSize:11, color:C.muted, whiteSpace:'nowrap' },}, "Total: "
                , React.createElement('b', { style: {color:C.text},}, calc.totalW.toFixed(0), "g"), " · DM: "   , React.createElement('b', { style: {color:C.amb},}, calc.dmPct.toFixed(1), "%"), " · ME: "   , React.createElement('b', { style: {color:C.blue},}, Math.round(calc.afKcalPerKg), " kcal/kg" ), " · NFE: " , React.createElement('b', { style: {color:'#a78bfa'},}, calc.dmNFE.toFixed(1), "%")
             )
-            , React.createElement('button', { onClick: ()=>setShowImportModal(true), style: { fontSize:11, padding:'4px 10px', borderRadius:5, cursor:'pointer', border:`1px solid ${C.bord}`, background:'transparent', color:C.muted, fontWeight:600 },}, "📥 Import" )
-            , recipe.length > 0 && React.createElement('button', { onClick: ()=>setShowShareModal(true), style: { fontSize:11, padding:'4px 10px', borderRadius:5, cursor:'pointer', border:`1px solid ${C.blue}50`, background:`${C.blue}10`, color:C.blue, fontWeight:600 },}, "🔗 Share" )
-            , calc && React.createElement('button', { onClick: exportToExcel, style: { fontSize:11, padding:'4px 10px', borderRadius:5, cursor:'pointer', border:`1px solid ${C.ok}50`, background:`${C.ok}10`, color:C.ok, fontWeight:600 },}, "📊 Excel" )
-            , calc && React.createElement('button', { onClick: exportToPDF, style: { fontSize:11, padding:'4px 10px', borderRadius:5, cursor:'pointer', border:`1px solid #a78bfa50`, background:'rgba(167,139,250,0.1)', color:'#a78bfa', fontWeight:600 },}, "📄 PDF" )
-            , calc && React.createElement('button', { onClick: printReport, style: { fontSize:11, padding:'4px 10px', borderRadius:5, cursor:'pointer', border:`1px solid ${C.bord}`, background:'transparent', color:C.muted, fontWeight:600 },}, "🖨️ Print" )
+            , React.createElement('button', { onClick: ()=>setShowIngImport(true), title: "Import ingredients from CSV/JSON", style: { fontSize:11, padding:'4px 10px', borderRadius:5, cursor:'pointer', border:`1px solid ${C.amb}40`, background:`${C.amb}10`, color:C.amb, fontWeight:600, whiteSpace:'nowrap' },}, "🥩 Import Ing"  )
+            , React.createElement('button', { onClick: ()=>setShowImportModal(true), style: { fontSize:11, padding:'4px 10px', borderRadius:5, cursor:'pointer', border:`1px solid ${C.bord}`, background:'transparent', color:C.muted, fontWeight:600, whiteSpace:'nowrap' },}, "📥 Import" )
+            , recipe.length > 0 && React.createElement('button', { onClick: ()=>setShowShareModal(true), style: { fontSize:11, padding:'4px 10px', borderRadius:5, cursor:'pointer', border:`1px solid ${C.blue}50`, background:`${C.blue}10`, color:C.blue, fontWeight:600, whiteSpace:'nowrap' },}, "🔗 Share" )
+            , calc && React.createElement('button', { onClick: exportToExcel, style: { fontSize:11, padding:'4px 10px', borderRadius:5, cursor:'pointer', border:`1px solid ${C.ok}50`, background:`${C.ok}10`, color:C.ok, fontWeight:600, whiteSpace:'nowrap' },}, "📊 Excel" )
+            , calc && React.createElement('button', { onClick: exportToPDF, style: { fontSize:11, padding:'4px 10px', borderRadius:5, cursor:'pointer', border:`1px solid #a78bfa50`, background:'rgba(167,139,250,0.1)', color:'#a78bfa', fontWeight:600, whiteSpace:'nowrap' },}, "📄 PDF" )
+            , calc && React.createElement('button', { onClick: printReport, style: { fontSize:11, padding:'4px 10px', borderRadius:5, cursor:'pointer', border:`1px solid ${C.bord}`, background:'transparent', color:C.muted, fontWeight:600, whiteSpace:'nowrap' },}, "🖨️ Print" )
           )
         )
 
         /* Tab Content */
-        , React.createElement('div', { style: { flex:1, overflow:'auto', padding:16 },}
+        , React.createElement('div', { style: { flex:1, padding:16, paddingBottom:50 },}
 
           /* ===== BUILDER TAB ===== */
           , activeTab === 'builder' && (
-            React.createElement('div', { style: { display:'grid', gridTemplateColumns:'360px 1fr', gap:14, height:'100%' },}
+            React.createElement('div', { style: { display:'grid', gridTemplateColumns:'minmax(320px, 380px) 1fr', gap:14 },}
               /* Ingredient Library */
               , React.createElement('div', { style: { display:'flex', flexDirection:'column', gap:10, minWidth:0 },}
                 , React.createElement('div', { style: { ...s.card, padding:'12px 14px', display:'flex', flexDirection:'column', gap:8, flexShrink:0 },}
@@ -3241,7 +3772,7 @@ Please generate a balanced starting formula, explain your ingredient choices, an
                     )
                   )
                 )
-                , React.createElement('div', { style: { ...s.card, overflow:'auto', flex:1 },}
+                , React.createElement('div', { style: { ...s.card, maxHeight:600, overflow:'auto' },}
                   , filteredIngs.map(ing => {
                     const inRecipe = recipe.some(r => r.ingId === ing.id);
                     const isCustom = customIngs.some(c => c.id === ing.id);
@@ -3345,7 +3876,7 @@ Please generate a balanced starting formula, explain your ingredient choices, an
                     , React.createElement('div', { style: { fontSize:13, color:C.muted, textAlign:'center' },}, "Select ingredients from the library"    , React.createElement('br', null), "to start your formula"   )
                   )
                 ) : (
-                  React.createElement('div', { style: { ...s.card, overflow:'auto', flex:1 },}
+                  React.createElement('div', { style: { ...s.card, maxHeight:600, overflow:'auto' },}
                     , React.createElement('table', { style: { width:'100%', borderCollapse:'collapse', fontSize:13 },}
                       , React.createElement('thead', null
                         , React.createElement('tr', { style: { borderBottom:`1px solid ${C.bord}` },}
@@ -4277,47 +4808,185 @@ Please generate a balanced starting formula, explain your ingredient choices, an
             )
           )
 
-          /* ===== AI BUILDER TAB ===== */
-          , activeTab === 'ai' && (
-            React.createElement('div', { style: { maxWidth:960, display:'flex', flexDirection:'column', height:'calc(100vh - 120px)', gap:12 },}
-              /* Mode switcher */
-              , React.createElement('div', { style: { display:'flex', gap:8, flexShrink:0 },}
-                , [{id:'chat',label:'💬 Chat Mode',desc:'Describe your formula in plain English'},{id:'wizard',label:'🧙 Wizard Mode',desc:'Fill structured goals, AI generates'}].map(m => (
-                  React.createElement('div', { key: m.id, onClick: ()=>setAiMode(m.id),
-                    style: { flex:1, padding:'12px 16px', borderRadius:9, border:`2px solid ${aiMode===m.id?C.amb:C.bord}`, background:aiMode===m.id?`${C.amb}10`:C.card, cursor:'pointer' },}
-                    , React.createElement('div', { style: { fontWeight:700, fontSize:13, color:aiMode===m.id?C.amb:C.text },}, m.label)
-                    , React.createElement('div', { style: { fontSize:11, color:C.muted, marginTop:2 },}, m.desc)
+          /* ===== AI ANALYSER TAB ===== */
+          , activeTab === 'aianalyser' && (
+            React.createElement('div', { style: { maxWidth:1100 },}
+              /* Header */
+              , React.createElement('div', { style: { ...s.card, padding:'14px 16px', marginBottom:14, border:`1px solid ${C.amb}30`, background:`linear-gradient(135deg, ${C.amb}08 0%, ${C.card} 60%)` },}
+                , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:10, marginBottom:6 },}
+                  , React.createElement('span', { style: { fontSize:24 },}, "🧠")
+                  , React.createElement('div', null
+                    , React.createElement('div', { style: { fontWeight:800, fontSize:16, color:C.amb },}, "AI Nutritional Analyser" )
+                    , React.createElement('div', { style: { fontSize:11, color:C.muted },}, "Get expert AI analysis of your current formula, powered by Claude — references AAFCO, FEDIAF, NRC standards"        )
                   )
-                ))
-                , aiMessages.length > 0 && (
-                  React.createElement('button', { onClick: ()=>{ setAiMessages([]); setAiError(''); },
-                    style: { padding:'8px 14px', borderRadius:8, border:`1px solid ${C.bord}`, background:'transparent', color:C.muted, cursor:'pointer', fontSize:12, fontWeight:600, flexShrink:0 },}, "🗑 Clear"
-
+                )
+                , !calc || !recipe.length ? (
+                  React.createElement('div', { style: { padding:'10px 12px', background:`${C.warn}10`, border:`1px solid ${C.warn}30`, borderRadius:6, fontSize:12, color:C.warn, marginTop:8 },}, "⚠ Add ingredients to your formula in the Builder tab first to run an analysis."     )
+                ) : (
+                  React.createElement('div', { style: { fontSize:11, color:C.muted, marginTop:6 },}, "Currently analysing: " 
+                    , React.createElement('b', { style: { color:C.text },}, recipeName), " · " , recipe.length, " ingredients · "    , React.createElement('b', { style: { color:C.amb },}, calc.totalW.toFixed(0), "g total")
                   )
                 )
               )
 
+              /* Mode buttons */
+              , calc && recipe.length > 0 && React.createElement('div', { style: { display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px,1fr))', gap:10, marginBottom:14 },}
+                , [
+                  { id:'quick', icon:'⚡', label:'Quick Analysis', desc:'Comprehensive review of strengths, weaknesses, and risks', action: runQuickAnalysis, color: C.blue },
+                  { id:'improve', icon:'🔧', label:'Suggest Improvements', desc:'Specific actionable recommendations to enhance the formula', action: runImproveAnalysis, color: C.ok },
+                  { id:'chat', icon:'💬', label:'Ask a Question', desc:'Free-form chat with the analyser about your formula', action: ()=>{ setAnalyserMode('chat'); }, color: '#a78bfa' },
+                ].map(m =>
+                  React.createElement('div', { key: m.id, onClick: m.action,
+                    style: { padding:'12px 14px', background:C.card, border:`2px solid ${C.bord}`, borderRadius:9, cursor: analyserLoading ? 'not-allowed' : 'pointer', opacity: analyserLoading ? 0.5 : 1, transition:'all 0.15s' },
+                    onMouseEnter: e=>{ if (!analyserLoading) { e.currentTarget.style.borderColor = m.color; e.currentTarget.style.background = `${m.color}08`; } },
+                    onMouseLeave: e=>{ e.currentTarget.style.borderColor = C.bord; e.currentTarget.style.background = C.card; } }
+                    , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:8, marginBottom:4 },}
+                      , React.createElement('span', { style: { fontSize:18 },}, m.icon)
+                      , React.createElement('span', { style: { fontWeight:700, fontSize:13, color: m.color },}, m.label)
+                    )
+                    , React.createElement('div', { style: { fontSize:11, color:C.muted, lineHeight:1.4 },}, m.desc)
+                  )
+                )
+              )
+
+              /* Suggested questions */
+              , calc && recipe.length > 0 && analyserMessages.length === 0 && React.createElement('div', { style: { ...s.card, padding:'12px 14px', marginBottom:14 },}
+                , React.createElement('div', { style: { fontSize:11, fontWeight:700, color:C.muted, marginBottom:8, letterSpacing:'0.05em' },}, "💡 SUGGESTED QUESTIONS"  )
+                , React.createElement('div', { style: { display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:6 },}
+                  , [
+                    `Is this formula safe for ${species==='dog'?'a dog':'a cat'} at the ${lifeStage} life stage?`,
+                    `What are the most critical issues I should fix first?`,
+                    `Could I reduce the cost without compromising nutrition?`,
+                    `Is the protein quality adequate? Any amino acid concerns?`,
+                    `Is the omega-6 to omega-3 ratio appropriate? How can I improve it?`,
+                    `What ingredient swaps would improve digestibility?`,
+                    `Is this formula appropriate for a senior animal?`,
+                    `How does this compare to commercial premium pet food?`,
+                  ].map((q, i) =>
+                    React.createElement('div', { key: i, onClick: ()=>sendAnalyserMessage(q),
+                      style: { padding:'8px 11px', background:'rgba(255,255,255,0.02)', border:`1px solid ${C.bord}`, borderRadius:6, fontSize:11, color:C.muted, cursor:'pointer', lineHeight:1.4 },
+                      onMouseEnter: e=>{ e.currentTarget.style.borderColor=C.amb; e.currentTarget.style.color=C.amb; },
+                      onMouseLeave: e=>{ e.currentTarget.style.borderColor=C.bord; e.currentTarget.style.color=C.muted; } },
+                      "❝ " , q, " ❞"
+                    )
+                  )
+                )
+              )
+
+              /* Chat / Analysis area */
+              , calc && recipe.length > 0 && (analyserMessages.length > 0 || analyserMode === 'chat') && React.createElement('div', { style: { ...s.card, display:'flex', flexDirection:'column', minHeight: 400 },}
+                , React.createElement('div', { ref: analyserChatRef, style: { padding:'14px 16px', flex:1, overflow:'auto', maxHeight: 600 },}
+                  , analyserMessages.length === 0 && analyserMode === 'chat' && (
+                    React.createElement('div', { style: { textAlign:'center', padding:'30px 16px', color:C.muted },}
+                      , React.createElement('div', { style: { fontSize:36, marginBottom:8 },}, "💬")
+                      , React.createElement('div', { style: { fontSize:13 },}, "Ask anything about your formula"   )
+                    )
+                  )
+                  , analyserMessages.map((msg, i) => {
+                    const isUser = msg.role === 'user';
+                    const display = isUser ? (msg.displayContent || msg.content.split('\n\n[CURRENT FORMULA')[0]) : msg.content;
+                    return React.createElement('div', { key: i, style: { display:'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', gap:8, marginBottom:14 },}
+                      , !isUser && React.createElement('div', { style: { width:30, height:30, borderRadius:'50%', background:`${C.amb}25`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 },}, "🧠")
+                      , React.createElement('div', { style: { maxWidth:'82%', padding:'10px 14px', borderRadius:10, background: isUser ? `${C.amb}14` : C.card, border:`1px solid ${isUser?C.amb+'40':C.bord}`, fontSize:13, color:C.text, lineHeight:1.6, whiteSpace:'pre-wrap' },}
+                        , display.replace(/\*\*(.*?)\*\*/g, '$1').replace(/^## /gm, '\n▸ ').replace(/^# /gm, '\n■ ')
+                      )
+                      , isUser && React.createElement('div', { style: { width:30, height:30, borderRadius:'50%', background:`${C.blue}25`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 },}, currentUser.avatar||'👤')
+                    );
+                  })
+                  , analyserLoading && React.createElement('div', { style: { display:'flex', gap:8, marginBottom:14 },}
+                    , React.createElement('div', { style: { width:30, height:30, borderRadius:'50%', background:`${C.amb}25`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14 },}, "🧠")
+                    , React.createElement('div', { style: { padding:'10px 14px', borderRadius:10, background:C.card, border:`1px solid ${C.bord}` },}
+                      , React.createElement('div', { style: { display:'flex', gap:4, alignItems:'center' },}
+                        , [0,1,2].map(i=>React.createElement('div', { key: i, style: { width:6, height:6, borderRadius:'50%', background:C.amb, animation:`bounce ${0.6+i*0.1}s infinite alternate` },}))
+                        , React.createElement('span', { style: { fontSize:11, color:C.muted, marginLeft:8 },}, "Analysing your formula..."   )
+                      )
+                    )
+                  )
+                  , analyserError && React.createElement('div', { style: { padding:'10px 14px', background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:8, color:C.err, fontSize:12 },}, "❌ " , analyserError)
+                )
+
+                /* Input bar */
+                , React.createElement('div', { style: { padding:'10px 12px', borderTop:`1px solid ${C.bord}`, display:'flex', gap:8 },}
+                  , React.createElement('input', { value: analyserInput, onChange: e=>setAnalyserInput(e.target.value), onKeyDown: e=>e.key==='Enter'&&!e.shiftKey&&sendAnalyserMessage(analyserInput),
+                    placeholder: "Ask a follow-up question..." ,
+                    disabled: analyserLoading,
+                    style: { ...s.input, flex:1, padding:'10px 14px', border:`1px solid ${C.amb}40`, fontSize:13 },} )
+                  , React.createElement('button', { onClick: ()=>sendAnalyserMessage(analyserInput), disabled: analyserLoading || !analyserInput.trim(),
+                    style: { background:C.amb, color:'#000', border:'none', borderRadius:7, padding:'10px 18px', cursor:'pointer', fontWeight:800, fontSize:13, opacity:(!analyserInput.trim()||analyserLoading)?0.5:1 },}
+                    , analyserLoading ? '⏳' : 'Send →'
+                  )
+                  , analyserMessages.length > 0 && React.createElement('button', { onClick: ()=>{ setAnalyserMessages([]); setAnalyserError(''); },
+                    style: { background:'transparent', border:`1px solid ${C.bord}`, color:C.muted, borderRadius:7, padding:'10px 14px', cursor:'pointer', fontSize:12 },}, "🗑 Clear")
+                )
+              )
+
+              /* What this analyser sees */
+              , calc && recipe.length > 0 && React.createElement('div', { style: { ...s.card, padding:'12px 14px', marginTop:14, fontSize:11, color:C.muted, lineHeight:1.6 },}
+                , React.createElement('div', { style: { fontWeight:700, color:C.text, marginBottom:6, fontSize:12 },}, "🔍 What the AI sees" )
+                , "The analyser receives your full formula context: all ingredient amounts, As-Fed and Dry Matter analysis, all minerals and vitamins, fatty acid breakdown (LA, ALA, EPA, DHA, AA), Ca:P ratio, ω-6:ω-3 ratio, amino acid profile, AAFCO/FEDIAF compliance status, safety warnings, ingredient interactions, digestibility & palatability scores, and cost. It then provides expert analysis based on veterinary nutrition science."
+              )
+
+              /* Disclaimer */
+              , React.createElement('div', { style: { marginTop:12, padding:'10px 14px', background:'rgba(245,158,11,0.06)', border:`1px solid ${C.warn}25`, borderRadius:7, fontSize:11, color:C.muted, lineHeight:1.5 },}
+                , "⚠️ " , React.createElement('b', null, "Disclaimer:"), " AI analysis is for educational and reference purposes only. It is generated by an AI model and may contain errors. Always consult a Board-Certified Veterinary Nutritionist (DACVN) before using any formula for clinical or commercial purposes. AI cannot replace professional consultation, feeding trials, or laboratory analysis. Built by Ruhan Oberoi."
+              )
+            )
+          )
+
+          /* ===== AI BUILDER TAB ===== */
+          , activeTab === 'ai' && (
+            React.createElement('div', { style: { maxWidth:1100 },}
+              /* Header */
+              , React.createElement('div', { style: { ...s.card, padding:'14px 16px', marginBottom:12, border:`1px solid ${C.amb}30`, background:`linear-gradient(135deg, ${C.amb}08 0%, ${C.card} 60%)` },}
+                , React.createElement('div', { style: { display:'flex', alignItems:'center', gap:10 },}
+                  , React.createElement('span', { style: { fontSize:24 },}, "🤖")
+                  , React.createElement('div', { style: { flex:1 },}
+                    , React.createElement('div', { style: { fontWeight:800, fontSize:16, color:C.amb },}, "AI Formula Builder" )
+                    , React.createElement('div', { style: { fontSize:11, color:C.muted },}, "Describe what you want — Claude generates a complete starting formula loaded into the Builder"        )
+                  )
+                  , aiMessages.length > 0 && React.createElement('button', { onClick: ()=>{ setAiMessages([]); setAiError(''); },
+                    style: { padding:'6px 12px', borderRadius:6, border:`1px solid ${C.bord}`, background:'transparent', color:C.muted, cursor:'pointer', fontSize:11, fontWeight:600 },}, "🗑 New Chat"   )
+                )
+              )
+
+              /* Mode switcher */
+              , React.createElement('div', { style: { display:'flex', gap:8, marginBottom:12 },}
+                , [{id:'chat',label:'💬 Chat Mode',desc:'Plain English'},{id:'wizard',label:'🧙 Wizard Mode',desc:'Structured form'}].map(m => (
+                  React.createElement('div', { key: m.id, onClick: ()=>setAiMode(m.id),
+                    style: { flex:1, padding:'10px 14px', borderRadius:8, border:`2px solid ${aiMode===m.id?C.amb:C.bord}`, background:aiMode===m.id?`${C.amb}10`:C.card, cursor:'pointer' },}
+                    , React.createElement('div', { style: { fontWeight:700, fontSize:13, color:aiMode===m.id?C.amb:C.text },}, m.label)
+                    , React.createElement('div', { style: { fontSize:11, color:C.muted, marginTop:2 },}, m.desc)
+                  )
+                ))
+              )
+
               , aiMode === 'chat' ? (
                 /* ---- CHAT MODE ---- */
-                React.createElement('div', { style: { flex:1, display:'flex', flexDirection:'column', ...s.card, overflow:'hidden' },}
+                React.createElement('div', { style: { display:'flex', flexDirection:'column', ...s.card, overflow:'hidden', minHeight: 500 },}
                   /* Messages */
-                  , React.createElement('div', { ref: aiChatRef, style: { flex:1, overflowY:'auto', padding:'16px 18px', display:'flex', flexDirection:'column', gap:12 },}
+                  , React.createElement('div', { ref: aiChatRef, style: { padding:'16px 18px', display:'flex', flexDirection:'column', gap:12, maxHeight: 600, overflow:'auto' },}
                     , aiMessages.length === 0 && (
-                      React.createElement('div', { style: { textAlign:'center', padding:'40px 20px', color:C.muted },}
-                        , React.createElement('div', { style: { fontSize:48, marginBottom:12 },}, "🤖")
+                      React.createElement('div', { style: { textAlign:'center', padding:'30px 20px', color:C.muted },}
+                        , React.createElement('div', { style: { fontSize:48, marginBottom:10 },}, "🤖")
                         , React.createElement('div', { style: { fontSize:16, fontWeight:700, color:C.text, marginBottom:6 },}, "AI Formula Builder"  )
-                        , React.createElement('div', { style: { fontSize:13, marginBottom:24 },}, "Describe your formula goals in plain English and I'll generate a complete, AAFCO-compliant starting formula."              )
-                        , React.createElement('div', { style: { display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, textAlign:'left', maxWidth:520, margin:'0 auto' },}
+                        , React.createElement('div', { style: { fontSize:12, marginBottom:20, lineHeight:1.5 },}, "Describe your formula goals in plain English. Claude will generate a complete, AAFCO-compliant starting formula and load it directly into the Builder tab."                  )
+                        , React.createElement('div', { style: { fontSize:10, fontWeight:700, color:C.muted, letterSpacing:'0.06em', marginBottom:8 },}, "TRY THESE EXAMPLES:"  )
+                        , React.createElement('div', { style: { display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:8, textAlign:'left', maxWidth:780, margin:'0 auto' },}
                           , [
-                            'Build a high-protein, low-carb kibble for a diabetic cat',
-                            'Create a kidney-friendly wet food formula for my 12-year-old dog',
-                            'Make a BARF formula for an adult German Shepherd, budget $2/kg',
-                            'Design a chicken-based senior dog food with joint support',
-                          ].map(ex => (
-                            React.createElement('div', { key: ex, onClick: ()=>sendAIMessage(ex), style: { padding:'9px 12px', background:C.card, border:`1px solid ${C.bord}`, borderRadius:8, fontSize:12, color:C.muted, cursor:'pointer', lineHeight:1.5 },
-                              onMouseEnter: e=>{e.currentTarget.style.borderColor=C.amb; e.currentTarget.style.color=C.amb;},
-                              onMouseLeave: e=>{e.currentTarget.style.borderColor=C.bord; e.currentTarget.style.color=C.muted;},}, "\""
-                              , ex, "\""
+                            { icon:'🐕', text:'Build a high-protein, grain-free kibble for an adult Labrador (30kg, active)' },
+                            { icon:'🐈', text:'Create a balanced wet food for an indoor adult cat — high meat, low carb' },
+                            { icon:'🥩', text:'Design a BARF formula for a German Shepherd, budget under $3/kg' },
+                            { icon:'👴', text:'Make a kidney-friendly senior dog food (low phosphorus, moderate protein)' },
+                            { icon:'🐶', text:'Large-breed puppy food with controlled calcium for joint health' },
+                            { icon:'🥗', text:'Hypoallergenic formula with novel protein (rabbit or venison) for allergic dog' },
+                            { icon:'⚖️', text:'Weight-loss kibble for an obese 8-year-old Beagle (high fiber, low fat)' },
+                            { icon:'❤️', text:'Heart-healthy formula for cat with HCM — taurine-rich, moderate sodium' },
+                          ].map((ex, i) => (
+                            React.createElement('div', { key: i, onClick: ()=>sendAIMessage(ex.text), style: { padding:'10px 12px', background:'rgba(255,255,255,0.02)', border:`1px solid ${C.bord}`, borderRadius:8, fontSize:12, color:C.text, cursor:'pointer', lineHeight:1.5, display:'flex', gap:8, alignItems:'flex-start' },
+                              onMouseEnter: e=>{e.currentTarget.style.borderColor=C.amb; e.currentTarget.style.background=`${C.amb}08`;},
+                              onMouseLeave: e=>{e.currentTarget.style.borderColor=C.bord; e.currentTarget.style.background='rgba(255,255,255,0.02)';},}
+                              , React.createElement('span', { style: { fontSize:16, flexShrink:0 },}, ex.icon)
+                              , React.createElement('span', null, ex.text)
                             )
                           ))
                         )
@@ -4325,39 +4994,48 @@ Please generate a balanced starting formula, explain your ingredient choices, an
                     )
                     , aiMessages.map((msg, i) => {
                       const isUser = msg.role === 'user';
-                      // Strip the JSON block from display
-                      const display = msg.content.replace(/<FORMULA>[\s\S]*?<\/FORMULA>/g, '\n✅ **Formula loaded into Builder** — check the Recipe Builder tab to see your formula.\n').trim();
+                      const hasFormula = !isUser && /<FORMULA>/.test(msg.content);
+                      const display = msg.content.replace(/<FORMULA>[\s\S]*?<\/FORMULA>/g, '\n').trim();
                       return (
                         React.createElement('div', { key: i, style: { display:'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', gap:8 },}
-                          , !isUser && React.createElement('div', { style: { width:28, height:28, borderRadius:'50%', background:`${C.amb}25`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 },}, "🤖")
-                          , React.createElement('div', { style: { maxWidth:'78%', padding:'10px 14px', borderRadius:10, background: isUser ? `${C.amb}18` : C.card, border:`1px solid ${isUser?C.amb+'40':C.bord}`, fontSize:13, color:C.text, lineHeight:1.6, whiteSpace:'pre-wrap' },}
-                            , display.replace(/\*\*(.*?)\*\*/g, '$1')
+                          , !isUser && React.createElement('div', { style: { width:30, height:30, borderRadius:'50%', background:`${C.amb}25`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 },}, "🤖")
+                          , React.createElement('div', { style: { maxWidth:'82%' },}
+                            , React.createElement('div', { style: { padding:'10px 14px', borderRadius:10, background: isUser ? `${C.amb}18` : C.card, border:`1px solid ${isUser?C.amb+'40':C.bord}`, fontSize:13, color:C.text, lineHeight:1.6, whiteSpace:'pre-wrap' },}
+                              , display.replace(/\*\*(.*?)\*\*/g, '$1')
+                            )
+                            , hasFormula && React.createElement('div', { style: { marginTop:6, padding:'6px 10px', background:`${C.ok}10`, border:`1px solid ${C.ok}40`, borderRadius:6, fontSize:11, color:C.ok, fontWeight:600, display:'flex', alignItems:'center', gap:6 },}
+                              , "✅ Formula loaded into Builder · "  
+                              , React.createElement('span', { onClick: ()=>setActiveTab('builder'), style: { color:C.amb, cursor:'pointer', textDecoration:'underline' },}, "Open Builder →"   )
+                              , React.createElement('span', { style: { color:C.muted },}, " · " )
+                              , React.createElement('span', { onClick: ()=>setActiveTab('aianalyser'), style: { color:'#a78bfa', cursor:'pointer', textDecoration:'underline' },}, "Run AI Analyser →"   )
+                            )
                           )
-                          , isUser && React.createElement('div', { style: { width:28, height:28, borderRadius:'50%', background:`${C.blue}25`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 },}, currentUser.avatar||'👤')
+                          , isUser && React.createElement('div', { style: { width:30, height:30, borderRadius:'50%', background:`${C.blue}25`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 },}, currentUser.avatar||'👤')
                         )
                       );
                     })
                     , aiLoading && (
                       React.createElement('div', { style: { display:'flex', gap:8 },}
-                        , React.createElement('div', { style: { width:28, height:28, borderRadius:'50%', background:`${C.amb}25`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14 },}, "🤖")
+                        , React.createElement('div', { style: { width:30, height:30, borderRadius:'50%', background:`${C.amb}25`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14 },}, "🤖")
                         , React.createElement('div', { style: { padding:'10px 14px', borderRadius:10, background:C.card, border:`1px solid ${C.bord}` },}
                           , React.createElement('div', { style: { display:'flex', gap:4, alignItems:'center' },}
                             , [0,1,2].map(i=>React.createElement('div', { key: i, style: { width:6, height:6, borderRadius:'50%', background:C.amb, animation:`bounce ${0.6+i*0.1}s infinite alternate` },}))
+                            , React.createElement('span', { style: { fontSize:11, color:C.muted, marginLeft:8 },}, "Designing your formula..."   )
                           )
                         )
                       )
                     )
-                    , aiError && React.createElement('div', { style: { padding:'10px 14px', background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:8, color:C.err, fontSize:12 },}, aiError)
+                    , aiError && React.createElement('div', { style: { padding:'10px 14px', background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:8, color:C.err, fontSize:12 },}, "❌ " , aiError)
                   )
                   /* Input */
-                  , React.createElement('div', { style: { padding:'12px 16px', borderTop:`1px solid ${C.bord}`, display:'flex', gap:8, flexShrink:0 },}
+                  , React.createElement('div', { style: { padding:'12px 16px', borderTop:`1px solid ${C.bord}`, display:'flex', gap:8 },}
                     , React.createElement('input', { value: aiInput, onChange: e=>setAiInput(e.target.value), onKeyDown: e=>e.key==='Enter'&&!e.shiftKey&&sendAIMessage(aiInput),
-                      placeholder: "Describe your formula goals... (e.g. 'high protein chicken kibble for large breed puppy')"            ,
+                      placeholder: "Describe your formula... (e.g. 'high-protein chicken kibble for large breed puppy')"             ,
                       disabled: aiLoading,
                       style: { ...s.input, flex:1, padding:'10px 14px', border:`1px solid ${C.amb}40`, fontSize:13 },} )
                     , React.createElement('button', { onClick: ()=>sendAIMessage(aiInput), disabled: aiLoading || !aiInput.trim(),
                       style: { background:C.amb, color:'#000', border:'none', borderRadius:7, padding:'10px 18px', cursor:'pointer', fontWeight:800, fontSize:13, opacity:(!aiInput.trim()||aiLoading)?0.5:1 },}
-                      , aiLoading ? '⏳' : 'Send →'
+                      , aiLoading ? '⏳' : 'Generate →'
                     )
                   )
                 )
@@ -5494,12 +6172,134 @@ Please generate a balanced starting formula, explain your ingredient choices, an
             )
           )
         )
+
+        /* Disclaimer Bar (inside main-content) */
+        , React.createElement('div', { className: "no-print", style: { padding:'8px 16px', background:'rgba(13,17,23,0.95)', borderTop:`1px solid ${C.bord}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8, fontSize:10, marginTop:'auto' },}
+          , React.createElement('span', { style: { color:'#666' },}, "⚠ For reference & educational purposes only — not veterinary advice"      )
+          , React.createElement('span', { style: { color:'#666' },}, "Built by " , React.createElement('span', { style: {color:C.amb,fontWeight:600},}, "Ruhan Oberoi"))
+        )
       )
 
-      /* Disclaimer Bar */
-      , React.createElement('div', { style: { position:'fixed', bottom:0, left:260, right:0, padding:'4px 16px', background:'rgba(13,17,23,0.95)', borderTop:`1px solid ${C.bord}`, display:'flex', alignItems:'center', justifyContent:'space-between', zIndex:50 },}
-        , React.createElement('span', { style: { fontSize:9, color:'#555' },}, "⚠ For reference & educational purposes only — not veterinary advice"      )
-        , React.createElement('span', { style: { fontSize:9, color:'#555' },}, "Built by " , React.createElement('span', { style: {color:C.amb,fontWeight:600},}, "Ruhan Oberoi"))
+      /* ===== INGREDIENT IMPORT MODAL ===== */
+      , showIngImport && (
+        React.createElement('div', { style: { position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:99, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }, onClick: e=>{if(e.target===e.currentTarget){setShowIngImport(false);setIngImportText('');setIngImportError('');setIngImportPreview(null);}},}
+          , React.createElement('div', { style: { background:C.surf, border:`1px solid ${C.bord}`, borderRadius:12, padding:24, width:'min(700px,95vw)', maxHeight:'90vh', overflow:'auto' },}
+            , React.createElement('div', { style: { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 },}
+              , React.createElement('div', { style: { fontWeight:700, fontSize:16, color:C.amb },}, "🥩 Import Ingredients" )
+              , React.createElement('button', { onClick: ()=>{setShowIngImport(false);setIngImportText('');setIngImportError('');setIngImportPreview(null);}, style: { background:'transparent', border:'none', color:C.muted, cursor:'pointer', fontSize:18 },}, "×")
+            )
+            , React.createElement('div', { style: { fontSize:11, color:C.muted, marginBottom:10, lineHeight:1.5 },}
+              , "Import custom ingredients from "  
+              , React.createElement('b', null, "CSV"), " or " 
+              , React.createElement('b', null, "JSON"), ". CSV format: first row = headers (id, name, cat, protein, fat, ..., kcal). JSON format: array of ingredient objects."
+            )
+
+            /* Sample buttons */
+            , React.createElement('div', { style: { display:'flex', gap:6, marginBottom:10, flexWrap:'wrap' },}
+              , React.createElement('button', { onClick: ()=>{
+                const sample = `id,name,cat,cost,protein,fat,fiber,moisture,ash,calcium,phosphorus,kcal\nmy_chicken,My Custom Chicken,Proteins,3.5,68,14,0.5,7,12,0.5,0.4,460\nmy_rice,Custom Rice Blend,Grains & Carbs,0.6,8,1.5,2,11,1.2,0.02,0.13,365`;
+                setIngImportText(sample); setIngImportError(''); setIngImportPreview(null);
+              }, style: { fontSize:10, padding:'4px 10px', border:`1px solid ${C.bord}`, background:'transparent', color:C.muted, borderRadius:5, cursor:'pointer' },}, "📋 Load CSV Sample"  )
+              , React.createElement('button', { onClick: ()=>{
+                const sample = JSON.stringify([
+                  {id:'custom_pork', name:'Custom Pork Loin', cat:'Proteins', cost:4.5, color:'#dc2626',
+                   n:{protein:65, fat:15, fiber:1, moisture:8, ash:11, calcium:0.05, phosphorus:0.55, sodium:0.4, kcal:455}},
+                  {id:'custom_quinoa', name:'Quinoa', cat:'Grains & Carbs', cost:2.5, color:'#facc15',
+                   n:{protein:14, fat:6, fiber:7, moisture:13, ash:2.5, calcium:0.05, phosphorus:0.46, kcal:368}}
+                ], null, 2);
+                setIngImportText(sample); setIngImportError(''); setIngImportPreview(null);
+              }, style: { fontSize:10, padding:'4px 10px', border:`1px solid ${C.bord}`, background:'transparent', color:C.muted, borderRadius:5, cursor:'pointer' },}, "📋 Load JSON Sample"   )
+              , React.createElement('label', { style: { fontSize:10, padding:'4px 10px', border:`1px solid ${C.amb}40`, background:`${C.amb}10`, color:C.amb, borderRadius:5, cursor:'pointer', fontWeight:600 },}
+                , "📁 Upload File"
+                , React.createElement('input', { type: "file", accept: ".csv,.json,.txt", style: {display:'none'},
+                  onChange: e => {
+                    const file = e.target.files[0]; if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = ev => { setIngImportText(ev.target.result); setIngImportError(''); setIngImportPreview(null); };
+                    reader.readAsText(file);
+                  } })
+              )
+            )
+
+            /* Textarea */
+            , React.createElement('textarea', { value: ingImportText, onChange: e => { setIngImportText(e.target.value); setIngImportError(''); setIngImportPreview(null); },
+              placeholder: "Paste CSV or JSON here, or upload a file..." ,
+              style: { width:'100%', minHeight:160, padding:'10px 12px', background:'#0d1117', border:`1px solid ${C.bord}`, borderRadius:7, color:C.text, fontSize:11, fontFamily:'DM Mono,monospace', outline:'none', resize:'vertical', boxSizing:'border-box' },} )
+
+            , ingImportError && React.createElement('div', { style: { padding:'8px 10px', background:`${C.err}12`, border:`1px solid ${C.err}40`, borderRadius:5, color:C.err, fontSize:11, marginTop:8 },}, "❌ " , ingImportError)
+
+            , ingImportPreview && React.createElement('div', { style: { marginTop:10, padding:'10px 12px', background:`${C.ok}08`, border:`1px solid ${C.ok}30`, borderRadius:7 },}
+              , React.createElement('div', { style: { fontSize:12, fontWeight:700, color:C.ok, marginBottom:6 },}, "✓ Parsed " , ingImportPreview.length, " ingredient(s)"   )
+              , React.createElement('div', { style: { maxHeight:140, overflow:'auto' },}
+                , ingImportPreview.map((ing, i) =>
+                  React.createElement('div', { key: i, style: { padding:'4px 0', fontSize:11, color:C.text, borderBottom:`1px solid ${C.bord}20` },}
+                    , React.createElement('b', null, ing.name), " — " , ing.cat, " · " , Math.round(_optionalChain([ing, 'access', _impn1 => _impn1.n, 'optionalAccess', _impn2 => _impn2.protein])||0), "% Pro · "    , Math.round(_optionalChain([ing, 'access', _impn3 => _impn3.n, 'optionalAccess', _impn4 => _impn4.fat])||0), "% Fat · "    , Math.round(_optionalChain([ing, 'access', _impn5 => _impn5.n, 'optionalAccess', _impn6 => _impn6.kcal])||0), " kcal/100g"
+                  )
+                )
+              )
+            )
+
+            /* Buttons */
+            , React.createElement('div', { style: { display:'flex', gap:8, marginTop:14 },}
+              , !ingImportPreview && React.createElement('button', { onClick: ()=>{
+                  if (!ingImportText.trim()) { setIngImportError('Please paste CSV or JSON content'); return; }
+                  try {
+                    const text = ingImportText.trim();
+                    let parsed = [];
+                    // Try JSON first
+                    if (text.startsWith('[') || text.startsWith('{')) {
+                      const j = JSON.parse(text);
+                      const arr = Array.isArray(j) ? j : [j];
+                      parsed = arr.map(item => {
+                        if (item.n) return { ...item, id: item.id || ('imp_'+Math.random().toString(36).slice(2,8)), color: item.color || '#10b981', cat: item.cat || 'Custom', cost: item.cost || 0 };
+                        // flat format → wrap into n
+                        const { id, name, cat, cost, color, ...nutrients } = item;
+                        return { id: id || ('imp_'+Math.random().toString(36).slice(2,8)), name: name || 'Imported', cat: cat || 'Custom', cost: cost || 0, color: color || '#10b981', n: nutrients };
+                      });
+                    } else {
+                      // CSV
+                      const lines = text.split(/\r?\n/).filter(l => l.trim());
+                      if (lines.length < 2) throw new Error('CSV must have at least a header row and one data row');
+                      const headers = lines[0].split(',').map(h => h.trim());
+                      for (let i = 1; i < lines.length; i++) {
+                        const cells = lines[i].split(',').map(c => c.trim());
+                        const obj = {};
+                        headers.forEach((h, idx) => { obj[h] = cells[idx]; });
+                        const { id, name, cat, cost, color, ...nutrientStrs } = obj;
+                        const n = {};
+                        Object.entries(nutrientStrs).forEach(([k, v]) => { n[k] = parseFloat(v) || 0; });
+                        parsed.push({
+                          id: id || ('imp_'+Math.random().toString(36).slice(2,8)),
+                          name: name || 'Imported '+i,
+                          cat: cat || 'Custom',
+                          cost: parseFloat(cost) || 0,
+                          color: color || '#10b981',
+                          n: n
+                        });
+                      }
+                    }
+                    if (!parsed.length) throw new Error('No ingredients found');
+                    setIngImportPreview(parsed); setIngImportError('');
+                  } catch (e) { setIngImportError(e.message); setIngImportPreview(null); }
+                }, style: { ...s.btn(true), flex:1 },}, "🔍 Parse & Preview"  )
+
+              , ingImportPreview && React.createElement('button', { onClick: ()=>{
+                  setCustomIngs(prev => {
+                    const newCustoms = [...prev];
+                    ingImportPreview.forEach(ing => {
+                      if (!newCustoms.find(c => c.id === ing.id) && !ING_DB.find(c => c.id === ing.id)) {
+                        newCustoms.push(ing);
+                      }
+                    });
+                    return newCustoms;
+                  });
+                  setShowIngImport(false); setIngImportText(''); setIngImportPreview(null); setIngImportError('');
+                }, style: { ...s.btn(true), flex:1, background:`${C.ok}20`, color:C.ok, borderColor:`${C.ok}50` },}, "✅ Import " , ingImportPreview.length, " Ingredient(s)"   )
+
+              , React.createElement('button', { onClick: ()=>{setShowIngImport(false);setIngImportText('');setIngImportError('');setIngImportPreview(null);}, style: { ...s.btn(false), flex:1 },}, "Cancel")
+            )
+          )
+        )
       )
 
       /* ===== SAVE FORMULA MODAL ===== */
@@ -5670,7 +6470,7 @@ Please generate a balanced starting formula, explain your ingredient choices, an
                     style: { fontSize:11, padding:'3px 10px', borderRadius:5, cursor:'pointer', border:`1px solid ${C.amb}50`, background:`${C.amb}10`, color:C.amb, fontWeight:600 },}
                     , p.name
                   )
-                  , React.createElement('button', { onClick: ()=>{ const updated = customProfiles.filter(x=>x.id!==p.id); setCustomProfiles(updated); localStorage.setItem('pfp:customProfiles', JSON.stringify(updated)); },
+                  , React.createElement('button', { onClick: ()=>{ setCustomProfiles(customProfiles.filter(x=>x.id!==p.id)); },
                     style: { fontSize:11, padding:'2px 6px', borderRadius:4, cursor:'pointer', border:`1px solid ${C.err}30`, background:'transparent', color:C.err },}, "×")
                 )
               ))
@@ -5688,9 +6488,7 @@ Please generate a balanced starting formula, explain your ingredient choices, an
                 , React.createElement('button', { onClick: ()=>{
                   if (!saveProfileName.trim()) return;
                   const p = { id: Date.now().toString(), name: saveProfileName.trim(), reqs: {...editReqBuffer} };
-                  const updated = [...customProfiles, p];
-                  setCustomProfiles(updated);
-                  localStorage.setItem('pfp:customProfiles', JSON.stringify(updated));
+                  setCustomProfiles([...customProfiles, p]);
                   setSaveProfileName(''); setShowSaveProfile(false);
                 }, style: { ...s.btn(true), fontSize:12, padding:'5px 14px', whiteSpace:'nowrap' },}, "Save")
                 , React.createElement('button', { onClick: ()=>{setShowSaveProfile(false);setSaveProfileName('');}, style: { ...s.btn(false), fontSize:12, padding:'5px 10px' },}, "Cancel")
