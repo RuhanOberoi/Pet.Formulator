@@ -17,7 +17,7 @@
 
 (function() {
   // === CONFIGURE THESE ===
-  const SUPABASE_URL = 'https://hlyqgjnywzbdombrwbky.supabase.co/rest/v1/';
+  const SUPABASE_URL = 'https://hlyqgjnywzbdombrwbky.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhseXFnam55d3piZG9tYnJ3Ymt5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MDQ0MTgsImV4cCI6MjA5MzA4MDQxOH0.oUW5O5iKn_3aazWXfSOQiR_7BM_BrBQ0_jqCQbj6_7c';
 
   // Load Supabase client from CDN
