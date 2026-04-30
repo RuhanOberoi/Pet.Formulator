@@ -14,7 +14,28 @@
   </style>
 </head>
 <body>
-  <script src="/supabase/integration.js"></script>
+  
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+  (function() {
+    // ============================================================
+    // SUPABASE CONFIGURATION
+    // Replace with YOUR keys from Supabase → Settings → API
+    // ============================================================
+    const SUPABASE_URL = 'https://hlyqgjnywzbdombrwbky.supabase.co/rest/v1/';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhseXFnam55d3piZG9tYnJ3Ymt5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MDQ0MTgsImV4cCI6MjA5MzA4MDQxOH0.oUW5O5iKn_3aazWXfSOQiR_7BM_BrBQ0_jqCQbj6_7c';
+
+    if (!SUPABASE_URL.includes('YOUR-PROJECT')) {
+      window.supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      console.log('[PetForm Pro] Supabase initialized ✓');
+    } else {
+      console.warn('[PetForm Pro] Supabase keys not configured — using local mode');
+    }
+  })();
+</script>
+  
+  
+  
   <div id="root"></div>
   <script>
  function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } } function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }const { useState, useMemo, useCallback, useEffect, useRef } = React;
@@ -1526,64 +1547,118 @@ function UserGate({ onLogin, onBack }) {
     if (password.length < 6) return setError('Password must be at least 6 characters.');
     if (password !== password2) return setError('Passwords do not match.');
 
-    setBusy(true);
-    const emailLower = email.trim().toLowerCase();
-
-    // Check email already used
-    const existing = Object.values(users).find(u => (u.email||'').toLowerCase() === emailLower);
-    if (existing) {
-      setBusy(false);
-      return setError('An account with this email already exists. Please log in instead.');
+    if (!window.supabase) {
+      return setError('Auth system not loaded. Please refresh the page and try again.');
     }
 
-    const passHash = await hashPassword(password);
-    const id = 'u_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now().toString(36);
-    const fresh = {
-      id,
-      name: name.trim(),
-      email: emailLower,
-      passHash,
-      avatar,
-      org: org.trim(),
-      plan: 'free',  // 'free' | 'pro'
-      createdAt: new Date().toISOString(),
-      lastLogin: new Date().toISOString(),
-      formulaCount: 0,
-    };
-    const updated = { ...users, [id]: fresh };
-    await DB.setUsers(updated);
-    setBusy(false);
-    onLogin(fresh);
-  };
+    setBusy(true);
+    try {
+      const { data, error } = await window.supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password: password,
+        options: {
+          data: {
+            name: name.trim(),
+            avatar: avatar,
+            organisation: org.trim(),
+          },
+          emailRedirectTo: window.location.origin + '/auth-confirm.html',
+        },
+      });
 
+      setBusy(false);
+
+      if (error) {
+        if (error.message.toLowerCase().includes('already registered') || error.message.toLowerCase().includes('already been registered')) {
+          return setError('An account with this email already exists. Please sign in instead.');
+        }
+        return setError(error.message);
+      }
+
+      // Check if email confirmation is required (data.session is null = needs verification)
+      if (data && data.user && !data.session) {
+        alert('✅ Account created!\n\n📧 We just sent a verification email to ' + email + '\n\n⚠️ Please check your inbox AND spam folder, then click the link to verify.\n\nAfter verifying, come back and sign in.');
+        setScreen('login');
+        setEmail(email.trim().toLowerCase());
+        setPassword('');
+        setPassword2('');
+      } else if (data && data.session) {
+        // Email confirmation is disabled — log in directly (not what we want, but handle it)
+        alert('Account created. Note: email verification is disabled in your Supabase settings.');
+        const profile = {
+          id: data.user.id,
+          email: data.user.email,
+          name: name.trim(),
+          avatar: avatar,
+          org: org.trim(),
+          plan: 'free',
+          formulaCount: 0,
+          createdAt: new Date().toISOString(),
+        };
+        onLogin(profile);
+      }
+    } catch (e) {
+      setBusy(false);
+      setError('Sign up failed: ' + (e.message || 'Unknown error'));
+    }
+  };
+   
   const loginUser = async () => {
     setError('');
     if (!validEmail(email.trim())) return setError('Please enter a valid email address.');
     if (!password) return setError('Please enter your password.');
 
+    if (!window.supabase) {
+      return setError('Auth system not loaded. Please refresh the page and try again.');
+    }
+
     setBusy(true);
-    const emailLower = email.trim().toLowerCase();
-    const passHash = await hashPassword(password);
+    try {
+      const { data, error } = await window.supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password: password,
+      });
 
-    // Re-fetch users to get latest from cloud (so users created on another device show up)
-    const fresh = await DB.getUsers();
-    setUsers(fresh);
+      if (error) {
+        setBusy(false);
+        const msg = error.message.toLowerCase();
+        if (msg.includes('email not confirmed') || msg.includes('email_not_confirmed')) {
+          return setError('⚠️ Please verify your email first. Check your inbox (and spam folder) for the confirmation link.');
+        }
+        if (msg.includes('invalid login') || msg.includes('invalid credentials')) {
+          return setError('Incorrect email or password.');
+        }
+        return setError(error.message);
+      }
 
-    const user = Object.values(fresh).find(u => (u.email||'').toLowerCase() === emailLower);
-    if (!user) {
+      // Successfully logged in — fetch profile
+      const userId = data.user.id;
+      const { data: profile } = await window.supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
       setBusy(false);
-      return setError('No account found with this email. Please sign up first.');
-    }
-    if (user.passHash !== passHash) {
+
+      const userObject = {
+        id: userId,
+        email: data.user.email,
+        name: (profile && profile.name) || data.user.user_metadata?.name || data.user.email,
+        avatar: (profile && profile.avatar) || data.user.user_metadata?.avatar || '🐾',
+        org: (profile && profile.organisation) || '',
+        plan: (profile && profile.plan) || 'free',
+        formulaCount: (profile && profile.formula_count) || 0,
+        createdAt: (profile && profile.created_at) || new Date().toISOString(),
+      };
+      onLogin(userObject);
+    } catch (e) {
       setBusy(false);
-      return setError('Incorrect password.');
+      setError('Sign in failed: ' + (e.message || 'Unknown error'));
     }
-    // Update last login
-    const updated = { ...fresh, [user.id]: { ...user, lastLogin: new Date().toISOString() } };
-    await DB.setUsers(updated);
-    setBusy(false);
-    onLogin({ ...user, lastLogin: new Date().toISOString() });
-  };
+  };    
+
+ 
 
   const S = {
     page: { minHeight:'100vh', background:C.bg, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'DM Sans','Segoe UI',sans-serif", padding:20 },
