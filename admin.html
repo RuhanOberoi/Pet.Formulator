@@ -58,6 +58,7 @@
     .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; }
     .pill.free { background: rgba(139,148,158,0.2); color: #8b949e; }
     .pill.pro { background: rgba(240,165,0,0.2); color: #f0a500; }
+    .pill.proplus { background: rgba(167,139,250,0.2); color: #a78bfa; }
     .pill.business { background: rgba(167,139,250,0.2); color: #a78bfa; }
     .pill.verified { background: rgba(34,197,94,0.2); color: #22c55e; }
     .pill.unverified { background: rgba(239,68,68,0.2); color: #ef4444; }
@@ -118,6 +119,7 @@
               <option value="all">All plans</option>
               <option value="free">Free only</option>
               <option value="pro">Pro only</option>
+              <option value="proplus">Pro+ only</option>
               <option value="business">Business only</option>
             </select>
             <select id="user-sort" onchange="renderUsers()">
@@ -183,6 +185,26 @@
         </div>
       </div>
 
+      <!-- AI Usage Per User -->
+      <div class="section">
+        <div class="section-header">
+          <h3>🤖 AI Usage This Month (Top Users)</h3>
+        </div>
+        <div id="ai-usage-content">
+          <div class="loading">Loading AI usage...</div>
+        </div>
+      </div>
+
+      <!-- High Usage Alerts -->
+      <div class="section">
+        <div class="section-header">
+          <h3>⚠️ Active Alerts (Unacknowledged)</h3>
+        </div>
+        <div id="alerts-content">
+          <div class="loading">Loading alerts...</div>
+        </div>
+      </div>
+
       <!-- Activity Chart -->
       <div class="section">
         <div class="section-header">
@@ -208,7 +230,7 @@
     // === ADMIN EMAILS — only these can access ===
     // Add YOUR email here. Anyone else trying to log in will be blocked.
     const ADMIN_EMAILS = [
-      'ruhanoberoi@outlook.com',          // ← REPLACE WITH YOUR REAL EMAIL
+      'ruhanoberoi@outlook.com,          // ← REPLACE WITH YOUR REAL EMAIL
       'ruhanoberoi2009@gmail.com',    // ← Add backup admin emails if needed
     ];
 
@@ -216,6 +238,8 @@
 
     let allUsers = [];
     let allFormulas = [];
+    let allAIUsage = [];
+    let allAlerts = [];
     let currentSession = null;
 
     // ---- AUTH ----
@@ -261,21 +285,41 @@
       return data;
     }
 
+    async function loadAIUsage() {
+      // Get current month's usage
+      const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+      const { data, error } = await sb.from('ai_usage').select('*').gte('created_at', monthStart.toISOString()).order('created_at', { ascending: false });
+      if (error) { console.warn('AI usage table not yet created — run supabase-ai-usage-migration.sql'); return []; }
+      return data || [];
+    }
+
+    async function loadAlerts() {
+      const { data, error } = await sb.from('admin_alerts').select('*').eq('acknowledged', false).order('created_at', { ascending: false }).limit(20);
+      if (error) return [];
+      return data || [];
+    }
+
     async function refreshAll() {
       document.getElementById('last-refresh').textContent = new Date().toLocaleString();
       allUsers = await loadUsers();
       allFormulas = await loadFormulas();
+      allAIUsage = await loadAIUsage();
+      allAlerts = await loadAlerts();
       renderStats();
       renderUsers();
       renderFormulas();
       renderSignupChart();
+      renderAIUsage();
+      renderAlerts();
     }
 
     // ---- STATS ----
     function renderStats() {
       const totalUsers = allUsers.length;
       const proUsers = allUsers.filter(u => u.plan === 'pro').length;
+      const proPlusUsers = allUsers.filter(u => u.plan === 'proplus').length;
       const businessUsers = allUsers.filter(u => u.plan === 'business').length;
+      const payingUsers = proUsers + proPlusUsers + businessUsers;
       const totalFormulas = allFormulas.length;
       const today = new Date(); today.setHours(0,0,0,0);
       const week = new Date(); week.setDate(week.getDate() - 7);
@@ -285,10 +329,17 @@
       const signupsMonth = allUsers.filter(u => new Date(u.created_at) >= month).length;
       const formulasWeek = allFormulas.filter(f => new Date(f.created_at) >= week).length;
 
-      // Revenue estimate
-      const monthlyRevenue = (proUsers * 14) + (businessUsers * 49);
+      // Revenue
+      const monthlyRevenue = (proUsers * 14) + (proPlusUsers * 29) + (businessUsers * 49);
       const annualRevenue = monthlyRevenue * 12;
-      const conversionRate = totalUsers > 0 ? ((proUsers + businessUsers) / totalUsers * 100) : 0;
+      const conversionRate = totalUsers > 0 ? (payingUsers / totalUsers * 100) : 0;
+
+      // AI usage stats
+      const aiCallsThisMonth = allAIUsage.length;
+      const aiCallsToday = allAIUsage.filter(u => new Date(u.created_at) >= today).length;
+      const totalAICost = allAIUsage.reduce((sum, u) => sum + (parseFloat(u.cost_usd) || 0), 0);
+      const grossProfit = monthlyRevenue - totalAICost;
+      const profitMargin = monthlyRevenue > 0 ? ((grossProfit / monthlyRevenue) * 100) : 0;
 
       document.getElementById('stats').innerHTML = `
         <div class="stat-card amb">
@@ -298,8 +349,8 @@
         </div>
         <div class="stat-card ok">
           <div class="label">PAYING USERS</div>
-          <div class="value">${proUsers + businessUsers}</div>
-          <div class="sub">${proUsers} pro + ${businessUsers} business</div>
+          <div class="value">${payingUsers}</div>
+          <div class="sub">${proUsers} pro · ${proPlusUsers} pro+ · ${businessUsers} biz</div>
         </div>
         <div class="stat-card blue">
           <div class="label">CONVERSION RATE</div>
@@ -310,6 +361,16 @@
           <div class="label">MRR ESTIMATE</div>
           <div class="value">$${monthlyRevenue.toLocaleString()}</div>
           <div class="sub">≈ $${annualRevenue.toLocaleString()}/year</div>
+        </div>
+        <div class="stat-card ${totalAICost > monthlyRevenue * 0.3 ? '' : 'ok'}">
+          <div class="label">AI COSTS THIS MONTH</div>
+          <div class="value">$${totalAICost.toFixed(2)}</div>
+          <div class="sub">${aiCallsThisMonth} calls (${aiCallsToday} today)</div>
+        </div>
+        <div class="stat-card ${profitMargin > 70 ? 'ok' : profitMargin > 40 ? 'amb' : ''}">
+          <div class="label">GROSS PROFIT MARGIN</div>
+          <div class="value">${profitMargin.toFixed(0)}%</div>
+          <div class="sub">$${grossProfit.toFixed(0)} after AI costs</div>
         </div>
         <div class="stat-card">
           <div class="label">SIGNUPS TODAY</div>
@@ -323,6 +384,94 @@
         </div>
       `;
     }
+
+    // ---- AI USAGE PER USER ----
+    function renderAIUsage() {
+      const container = document.getElementById('ai-usage-content');
+      if (!container) return;
+
+      // Group usage by user
+      const usageByUser = {};
+      allAIUsage.forEach(u => {
+        if (!usageByUser[u.user_id]) usageByUser[u.user_id] = { count: 0, cost: 0, lastUsed: null };
+        usageByUser[u.user_id].count++;
+        usageByUser[u.user_id].cost += parseFloat(u.cost_usd) || 0;
+        if (!usageByUser[u.user_id].lastUsed || new Date(u.created_at) > new Date(usageByUser[u.user_id].lastUsed)) {
+          usageByUser[u.user_id].lastUsed = u.created_at;
+        }
+      });
+
+      // Sort by call count
+      const ranked = Object.entries(usageByUser)
+        .map(([userId, stats]) => ({ ...stats, userId, profile: allUsers.find(u => u.id === userId) }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 20);
+
+      if (ranked.length === 0) {
+        container.innerHTML = '<div class="empty">No AI usage this month yet</div>';
+        return;
+      }
+
+      container.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr>
+              <th style="padding:8px;text-align:left;font-size:10px;color:#8b949e;border-bottom:1px solid #30363d;">USER</th>
+              <th style="padding:8px;text-align:left;font-size:10px;color:#8b949e;border-bottom:1px solid #30363d;">PLAN</th>
+              <th style="padding:8px;text-align:right;font-size:10px;color:#8b949e;border-bottom:1px solid #30363d;">CALLS</th>
+              <th style="padding:8px;text-align:right;font-size:10px;color:#8b949e;border-bottom:1px solid #30363d;">COST</th>
+              <th style="padding:8px;text-align:right;font-size:10px;color:#8b949e;border-bottom:1px solid #30363d;">LAST USED</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${ranked.map(r => {
+              const limit = ({pro:20, proplus:100, business:500})[r.profile?.plan] || 0;
+              const pct = limit > 0 ? Math.round(r.count / limit * 100) : 0;
+              const color = pct >= 100 ? '#ef4444' : pct >= 80 ? '#f59e0b' : pct >= 50 ? '#3b82f6' : '#22c55e';
+              return `
+                <tr>
+                  <td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.04);">
+                    <b>${escapeHtml(r.profile?.name || '—')}</b><br>
+                    <span style="font-size:10px;color:#8b949e;">${escapeHtml(r.profile?.email || r.userId.substring(0,8))}</span>
+                  </td>
+                  <td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.04);"><span class="pill ${r.profile?.plan || 'free'}">${(r.profile?.plan || 'free').toUpperCase()}</span></td>
+                  <td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.04);text-align:right;font-family:'DM Mono',monospace;color:${color};font-weight:700;">
+                    ${r.count} / ${limit || '∞'} (${pct}%)
+                  </td>
+                  <td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.04);text-align:right;font-family:'DM Mono',monospace;">$${r.cost.toFixed(3)}</td>
+                  <td style="padding:8px;border-bottom:1px solid rgba(255,255,255,0.04);text-align:right;font-size:10px;color:#8b949e;">${formatDate(r.lastUsed)}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderAlerts() {
+      const container = document.getElementById('alerts-content');
+      if (!container) return;
+      if (allAlerts.length === 0) {
+        container.innerHTML = '<div style="padding:14px;text-align:center;color:#22c55e;font-size:13px;">✓ No active alerts</div>';
+        return;
+      }
+      container.innerHTML = allAlerts.map(a => `
+        <div style="padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <div style="flex:1;">
+            <div style="font-size:12px;font-weight:600;color:#f59e0b;">⚠ ${escapeHtml(a.alert_type)}</div>
+            <div style="font-size:11px;color:#e6edf3;margin-top:2px;">${escapeHtml(a.message)}</div>
+            <div style="font-size:10px;color:#8b949e;margin-top:2px;">${formatDate(a.created_at)}</div>
+          </div>
+          <button onclick="acknowledgeAlert('${a.id}')" style="padding:4px 10px;border-radius:5px;border:1px solid #30363d;background:transparent;color:#8b949e;cursor:pointer;font-size:10px;font-weight:600;">✓ Acknowledge</button>
+        </div>
+      `).join('');
+    }
+
+    async function acknowledgeAlert(id) {
+      await sb.from('admin_alerts').update({ acknowledged: true }).eq('id', id);
+      await refreshAll();
+    }
+    window.acknowledgeAlert = acknowledgeAlert;
 
     // ---- USERS TABLE ----
     function renderUsers() {
@@ -354,6 +503,7 @@
           <td style="font-size:11px;color:#8b949e;">${formatDate(u.last_login || u.created_at)}</td>
           <td class="row-actions">
             ${u.plan !== 'pro' ? `<button class="upgrade" onclick="upgradeUser('${u.id}', 'pro')">⬆ Pro</button>` : ''}
+            ${u.plan !== 'proplus' ? `<button class="upgrade" onclick="upgradeUser('${u.id}', 'proplus')" style="border-color:#a78bfa;color:#a78bfa;">⬆ Pro+</button>` : ''}
             ${u.plan !== 'free' ? `<button onclick="upgradeUser('${u.id}', 'free')">⬇ Free</button>` : ''}
             <button onclick="viewUserDetails('${u.id}')">View</button>
             <button class="delete" onclick="deleteUser('${u.id}', '${escapeHtml(u.email)}')">🗑</button>
