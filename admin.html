@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard — PetForm Pro</title>
+  <style>
+    *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0d1117; color: #e6edf3; font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif; min-height: 100vh; padding: 0; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0d1117; }
+    ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+
+    .header { background: #161b22; border-bottom: 1px solid #30363d; padding: 16px 24px; display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 50; }
+    .header h1 { font-size: 18px; color: #f0a500; font-weight: 800; flex: 1; }
+    .header .badge { font-size: 9px; background: #f0a500; color: #000; padding: 3px 8px; border-radius: 4px; font-weight: 700; }
+    .header button { background: transparent; border: 1px solid #30363d; color: #8b949e; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
+    .header button:hover { border-color: #f0a500; color: #f0a500; }
+
+    .container { max-width: 1280px; margin: 0 auto; padding: 24px; }
+
+    /* Login Gate */
+    .gate { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    .gate-card { background: #161b22; border: 1px solid #30363d; border-radius: 16px; padding: 40px; max-width: 420px; width: 100%; text-align: center; }
+    .gate-card .icon { font-size: 64px; margin-bottom: 12px; }
+    .gate-card h2 { color: #f0a500; font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+    .gate-card p { color: #8b949e; font-size: 13px; line-height: 1.5; margin-bottom: 20px; }
+    .gate-card input { width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; color: #e6edf3; padding: 11px 14px; font-size: 14px; outline: none; margin-bottom: 12px; }
+    .gate-card input:focus { border-color: #f0a500; }
+    .gate-card button { width: 100%; background: #f0a500; color: #000; border: none; padding: 13px; border-radius: 8px; font-weight: 800; cursor: pointer; }
+    .gate-card .err { color: #ef4444; font-size: 12px; margin-top: 10px; }
+
+    /* Dashboard */
+    .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 14px 16px; }
+    .stat-card .label { font-size: 10px; color: #8b949e; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .stat-card .value { font-size: 26px; font-weight: 800; color: #e6edf3; font-family: 'DM Mono', monospace; }
+    .stat-card.amb .value { color: #f0a500; }
+    .stat-card.ok .value { color: #22c55e; }
+    .stat-card.blue .value { color: #3b82f6; }
+    .stat-card .sub { font-size: 10px; color: #8b949e; margin-top: 4px; }
+
+    /* Section */
+    .section { background: #161b22; border: 1px solid #30363d; border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+    .section-header { padding: 12px 18px; border-bottom: 1px solid #30363d; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+    .section-header h3 { font-size: 14px; font-weight: 700; color: #f0a500; }
+    .section-controls { display: flex; gap: 6px; flex-wrap: wrap; }
+    .section-controls input, .section-controls select { background: #0d1117; border: 1px solid #30363d; color: #e6edf3; padding: 6px 10px; border-radius: 5px; font-size: 11px; outline: none; }
+    .section-controls input:focus, .section-controls select:focus { border-color: #f0a500; }
+    .section-controls button { background: transparent; border: 1px solid #30363d; color: #8b949e; padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600; }
+    .section-controls button:hover { border-color: #f0a500; color: #f0a500; }
+
+    /* Table */
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { padding: 10px 14px; text-align: left; font-weight: 600; font-size: 10px; color: #8b949e; letter-spacing: 0.05em; border-bottom: 1px solid #30363d; background: rgba(255,255,255,0.02); white-space: nowrap; }
+    td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); color: #e6edf3; }
+    tr:hover { background: rgba(255,255,255,0.02); }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; }
+    .pill.free { background: rgba(139,148,158,0.2); color: #8b949e; }
+    .pill.pro { background: rgba(240,165,0,0.2); color: #f0a500; }
+    .pill.business { background: rgba(167,139,250,0.2); color: #a78bfa; }
+    .pill.verified { background: rgba(34,197,94,0.2); color: #22c55e; }
+    .pill.unverified { background: rgba(239,68,68,0.2); color: #ef4444; }
+    .row-actions button { background: transparent; border: 1px solid #30363d; color: #8b949e; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: 600; margin-right: 4px; }
+    .row-actions button:hover { border-color: #f0a500; color: #f0a500; }
+    .row-actions button.upgrade { border-color: #f0a500; color: #f0a500; }
+    .row-actions button.upgrade:hover { background: #f0a500; color: #000; }
+    .row-actions button.delete:hover { border-color: #ef4444; color: #ef4444; }
+
+    .loading { text-align: center; padding: 40px; color: #8b949e; }
+    .empty { text-align: center; padding: 40px; color: #8b949e; }
+    .footer-note { text-align: center; padding: 24px; font-size: 11px; color: #555; }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN GATE -->
+  <div id="gate" class="gate">
+    <div class="gate-card">
+      <div class="icon">🔐</div>
+      <h2>Admin Access</h2>
+      <p>This is a private dashboard for site administrators only. Sign in with your admin email and password.</p>
+      <input type="email" id="admin-email" placeholder="Admin email" autocomplete="email">
+      <input type="password" id="admin-password" placeholder="Password" autocomplete="current-password">
+      <button onclick="signInAdmin()">🔐 Sign In</button>
+      <div id="gate-err" class="err"></div>
+      <div style="margin-top:16px;font-size:10px;color:#555;">
+        <a href="/" style="color:#f0a500;">← Back to PetForm Pro</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashboard" style="display:none;">
+    <div class="header">
+      <div style="font-size:24px;">🛡️</div>
+      <h1>PetForm Pro · Admin Dashboard</h1>
+      <span class="badge">PRIVATE</span>
+      <span id="admin-email-display" style="font-size:12px;color:#8b949e;"></span>
+      <button onclick="refreshAll()">↻ Refresh</button>
+      <button onclick="signOut()">Sign Out</button>
+    </div>
+
+    <div class="container">
+
+      <!-- Stats -->
+      <div class="stats" id="stats">
+        <div class="loading">Loading stats...</div>
+      </div>
+
+      <!-- Users Section -->
+      <div class="section">
+        <div class="section-header">
+          <h3>👥 Users</h3>
+          <div class="section-controls">
+            <input type="text" id="user-search" placeholder="🔍 Search by email or name..." style="width:240px;" oninput="renderUsers()">
+            <select id="user-filter-plan" onchange="renderUsers()">
+              <option value="all">All plans</option>
+              <option value="free">Free only</option>
+              <option value="pro">Pro only</option>
+              <option value="business">Business only</option>
+            </select>
+            <select id="user-sort" onchange="renderUsers()">
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="name">A → Z</option>
+              <option value="formulas">Most formulas</option>
+            </select>
+            <button onclick="exportUsers()">📥 Export CSV</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table id="users-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Plan</th>
+                <th>Formulas</th>
+                <th>Joined</th>
+                <th>Last Login</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="users-tbody">
+              <tr><td colspan="7" class="loading">Loading users...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Recent Formulas -->
+      <div class="section">
+        <div class="section-header">
+          <h3>📋 Recent Formulas</h3>
+          <div class="section-controls">
+            <input type="text" id="formula-search" placeholder="🔍 Search formulas..." style="width:240px;" oninput="renderFormulas()">
+            <select id="formula-filter-species" onchange="renderFormulas()">
+              <option value="all">All species</option>
+              <option value="dog">🐕 Dogs only</option>
+              <option value="cat">🐈 Cats only</option>
+            </select>
+            <button onclick="exportFormulas()">📥 Export CSV</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table id="formulas-table">
+            <thead>
+              <tr>
+                <th>Formula Name</th>
+                <th>Created By</th>
+                <th>Species</th>
+                <th>Life Stage</th>
+                <th>Format</th>
+                <th>Ingredients</th>
+                <th>Saved</th>
+              </tr>
+            </thead>
+            <tbody id="formulas-tbody">
+              <tr><td colspan="7" class="loading">Loading formulas...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Activity Chart -->
+      <div class="section">
+        <div class="section-header">
+          <h3>📈 Signup Trend (last 30 days)</h3>
+        </div>
+        <div style="padding:18px;">
+          <div id="signup-chart"><div class="loading">Loading chart...</div></div>
+        </div>
+      </div>
+
+      <div class="footer-note">
+        🛡️ Admin Dashboard · Built by Ruhan Oberoi · Last refreshed: <span id="last-refresh">never</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script>
+    // === CONFIGURE THESE ===
+    const SUPABASE_URL = 'https://hlyqgjnywzbdombrwbky.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhseXFnam55d3piZG9tYnJ3Ymt5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MDQ0MTgsImV4cCI6MjA5MzA4MDQxOH0.oUW5O5iKn_3aazWXfSOQiR_7BM_BrBQ0_jqCQbj6_7c';
+
+    // === ADMIN EMAILS — only these can access ===
+    // Add YOUR email here. Anyone else trying to log in will be blocked.
+    const ADMIN_EMAILS = [
+      'ruhan@example.com',          // ← REPLACE WITH YOUR REAL EMAIL
+      'ruhanoberoi@example.com',    // ← Add backup admin emails if needed
+    ];
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let allUsers = [];
+    let allFormulas = [];
+    let currentSession = null;
+
+    // ---- AUTH ----
+    async function signInAdmin() {
+      const email = document.getElementById('admin-email').value.trim().toLowerCase();
+      const password = document.getElementById('admin-password').value;
+      const errEl = document.getElementById('gate-err');
+      errEl.textContent = '';
+
+      if (!ADMIN_EMAILS.map(e => e.toLowerCase()).includes(email)) {
+        errEl.textContent = 'Access denied. This email is not registered as an administrator.';
+        return;
+      }
+
+      try {
+        const { data, error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        currentSession = data.session;
+        document.getElementById('admin-email-display').textContent = email;
+        document.getElementById('gate').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+        await refreshAll();
+      } catch (e) {
+        errEl.textContent = 'Sign in failed: ' + e.message;
+      }
+    }
+
+    async function signOut() {
+      await sb.auth.signOut();
+      window.location.reload();
+    }
+
+    // ---- DATA LOADING ----
+    async function loadUsers() {
+      const { data, error } = await sb.from('profiles').select('*').order('created_at', { ascending: false });
+      if (error) { console.error(error); return []; }
+      return data;
+    }
+
+    async function loadFormulas() {
+      const { data, error } = await sb.from('formulas').select('*').order('created_at', { ascending: false }).limit(100);
+      if (error) { console.error(error); return []; }
+      return data;
+    }
+
+    async function refreshAll() {
+      document.getElementById('last-refresh').textContent = new Date().toLocaleString();
+      allUsers = await loadUsers();
+      allFormulas = await loadFormulas();
+      renderStats();
+      renderUsers();
+      renderFormulas();
+      renderSignupChart();
+    }
+
+    // ---- STATS ----
+    function renderStats() {
+      const totalUsers = allUsers.length;
+      const proUsers = allUsers.filter(u => u.plan === 'pro').length;
+      const businessUsers = allUsers.filter(u => u.plan === 'business').length;
+      const totalFormulas = allFormulas.length;
+      const today = new Date(); today.setHours(0,0,0,0);
+      const week = new Date(); week.setDate(week.getDate() - 7);
+      const month = new Date(); month.setDate(month.getDate() - 30);
+      const signupsToday = allUsers.filter(u => new Date(u.created_at) >= today).length;
+      const signupsWeek = allUsers.filter(u => new Date(u.created_at) >= week).length;
+      const signupsMonth = allUsers.filter(u => new Date(u.created_at) >= month).length;
+      const formulasWeek = allFormulas.filter(f => new Date(f.created_at) >= week).length;
+
+      // Revenue estimate
+      const monthlyRevenue = (proUsers * 14) + (businessUsers * 49);
+      const annualRevenue = monthlyRevenue * 12;
+      const conversionRate = totalUsers > 0 ? ((proUsers + businessUsers) / totalUsers * 100) : 0;
+
+      document.getElementById('stats').innerHTML = `
+        <div class="stat-card amb">
+          <div class="label">TOTAL USERS</div>
+          <div class="value">${totalUsers}</div>
+          <div class="sub">+${signupsWeek} this week</div>
+        </div>
+        <div class="stat-card ok">
+          <div class="label">PAYING USERS</div>
+          <div class="value">${proUsers + businessUsers}</div>
+          <div class="sub">${proUsers} pro + ${businessUsers} business</div>
+        </div>
+        <div class="stat-card blue">
+          <div class="label">CONVERSION RATE</div>
+          <div class="value">${conversionRate.toFixed(1)}%</div>
+          <div class="sub">free → paid</div>
+        </div>
+        <div class="stat-card amb">
+          <div class="label">MRR ESTIMATE</div>
+          <div class="value">$${monthlyRevenue.toLocaleString()}</div>
+          <div class="sub">≈ $${annualRevenue.toLocaleString()}/year</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">SIGNUPS TODAY</div>
+          <div class="value">${signupsToday}</div>
+          <div class="sub">+${signupsMonth} this month</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">TOTAL FORMULAS</div>
+          <div class="value">${totalFormulas}</div>
+          <div class="sub">+${formulasWeek} this week</div>
+        </div>
+      `;
+    }
+
+    // ---- USERS TABLE ----
+    function renderUsers() {
+      const search = document.getElementById('user-search').value.toLowerCase();
+      const filter = document.getElementById('user-filter-plan').value;
+      const sort = document.getElementById('user-sort').value;
+
+      let users = [...allUsers];
+      if (search) users = users.filter(u => (u.name || '').toLowerCase().includes(search) || (u.email || '').toLowerCase().includes(search));
+      if (filter !== 'all') users = users.filter(u => u.plan === filter);
+      if (sort === 'newest') users.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+      else if (sort === 'oldest') users.sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+      else if (sort === 'name') users.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+      else if (sort === 'formulas') users.sort((a,b) => (b.formula_count||0) - (a.formula_count||0));
+
+      const tbody = document.getElementById('users-tbody');
+      if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">No users match your filters</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = users.map(u => `
+        <tr>
+          <td><b>${escapeHtml(u.name || '—')}</b></td>
+          <td style="font-family:'DM Mono',monospace;font-size:11px;color:#8b949e;">${escapeHtml(u.email || '—')}</td>
+          <td><span class="pill ${u.plan || 'free'}">${(u.plan || 'free').toUpperCase()}</span></td>
+          <td style="text-align:center;font-family:'DM Mono',monospace;">${u.formula_count || 0}</td>
+          <td style="font-size:11px;color:#8b949e;">${formatDate(u.created_at)}</td>
+          <td style="font-size:11px;color:#8b949e;">${formatDate(u.last_login || u.created_at)}</td>
+          <td class="row-actions">
+            ${u.plan !== 'pro' ? `<button class="upgrade" onclick="upgradeUser('${u.id}', 'pro')">⬆ Pro</button>` : ''}
+            ${u.plan !== 'free' ? `<button onclick="upgradeUser('${u.id}', 'free')">⬇ Free</button>` : ''}
+            <button onclick="viewUserDetails('${u.id}')">View</button>
+            <button class="delete" onclick="deleteUser('${u.id}', '${escapeHtml(u.email)}')">🗑</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // ---- FORMULAS TABLE ----
+    function renderFormulas() {
+      const search = document.getElementById('formula-search').value.toLowerCase();
+      const filter = document.getElementById('formula-filter-species').value;
+
+      let formulas = [...allFormulas];
+      if (search) formulas = formulas.filter(f => (f.name || '').toLowerCase().includes(search));
+      if (filter !== 'all') formulas = formulas.filter(f => f.species === filter);
+
+      const tbody = document.getElementById('formulas-tbody');
+      if (formulas.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">No formulas match your filters</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = formulas.slice(0, 50).map(f => {
+        const owner = allUsers.find(u => u.id === f.user_id);
+        const ingCount = Array.isArray(f.recipe) ? f.recipe.length : 0;
+        return `
+          <tr>
+            <td><b>${escapeHtml(f.name || 'Untitled')}</b></td>
+            <td style="font-size:11px;color:#8b949e;">${escapeHtml(owner?.email || f.user_id?.substring(0,8) || '—')}</td>
+            <td>${f.species === 'cat' ? '🐈 Cat' : '🐕 Dog'}</td>
+            <td>${escapeHtml(f.life_stage || '—')}</td>
+            <td>${escapeHtml(f.food_format || '—')}</td>
+            <td style="text-align:center;font-family:'DM Mono',monospace;">${ingCount}</td>
+            <td style="font-size:11px;color:#8b949e;">${formatDate(f.created_at)}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // ---- SIGNUP CHART ----
+    function renderSignupChart() {
+      const days = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0,0,0,0);
+        days.push({ date: d, count: 0 });
+      }
+      allUsers.forEach(u => {
+        const d = new Date(u.created_at); d.setHours(0,0,0,0);
+        const day = days.find(x => x.date.getTime() === d.getTime());
+        if (day) day.count++;
+      });
+
+      const maxCount = Math.max(...days.map(d => d.count), 1);
+      const chartHtml = `
+        <div style="display:flex;gap:2px;align-items:flex-end;height:120px;border-bottom:1px solid #30363d;border-left:1px solid #30363d;padding:0 4px;">
+          ${days.map(d => {
+            const h = (d.count / maxCount) * 100;
+            const isToday = d.date.toDateString() === new Date().toDateString();
+            return `<div title="${d.date.toLocaleDateString()}: ${d.count} signups" style="flex:1;height:${h}%;background:${d.count > 0 ? '#f0a500' : '#30363d'};${isToday ? 'border:2px solid #22c55e;':''}border-radius:2px 2px 0 0;min-height:2px;cursor:pointer;"></div>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:#8b949e;margin-top:6px;">
+          <span>30 days ago</span>
+          <span style="color:#22c55e;">●</span><span style="margin-left:-50px;">today</span>
+          <span></span>
+        </div>
+      `;
+      document.getElementById('signup-chart').innerHTML = chartHtml;
+    }
+
+    // ---- ACTIONS ----
+    async function upgradeUser(userId, plan) {
+      if (!confirm(`Change this user's plan to "${plan}"?`)) return;
+      const updates = { plan };
+      if (plan === 'pro') updates.upgraded_at = new Date().toISOString();
+      const { error } = await sb.from('profiles').update(updates).eq('id', userId);
+      if (error) { alert('Error: ' + error.message); return; }
+      await refreshAll();
+      alert(`✓ User upgraded to ${plan}`);
+    }
+
+    async function deleteUser(userId, email) {
+      if (!confirm(`⚠️ Delete user "${email}"?\n\nThis will permanently delete all their formulas and data. This cannot be undone.`)) return;
+      const { error } = await sb.from('profiles').delete().eq('id', userId);
+      if (error) { alert('Error: ' + error.message); return; }
+      // Note: deleting from auth.users requires service_role key — use a serverless function for that
+      // For now, this just removes the profile (cascades to formulas thanks to RLS foreign key)
+      await refreshAll();
+      alert(`User profile deleted. To fully remove auth record, do it from Supabase → Authentication → Users.`);
+    }
+
+    function viewUserDetails(userId) {
+      const u = allUsers.find(x => x.id === userId);
+      if (!u) return;
+      const userFormulas = allFormulas.filter(f => f.user_id === userId);
+      alert(`USER DETAILS\n\nName: ${u.name}\nEmail: ${u.email}\nPlan: ${u.plan || 'free'}\nFormulas: ${userFormulas.length}\nJoined: ${formatDate(u.created_at)}\nLast login: ${formatDate(u.last_login)}\nOrganisation: ${u.organisation || '—'}\n\nTheir formulas:\n${userFormulas.map(f => '• ' + f.name).join('\n') || 'None yet'}`);
+    }
+
+    // ---- EXPORT ----
+    function exportUsers() {
+      const csv = [
+        'Name,Email,Plan,Formulas,Organisation,Joined,Last Login',
+        ...allUsers.map(u => [
+          escapeCsv(u.name || ''),
+          escapeCsv(u.email || ''),
+          u.plan || 'free',
+          u.formula_count || 0,
+          escapeCsv(u.organisation || ''),
+          u.created_at || '',
+          u.last_login || '',
+        ].join(','))
+      ].join('\n');
+      downloadCsv(csv, 'users');
+    }
+
+    function exportFormulas() {
+      const csv = [
+        'Formula Name,Owner Email,Species,Life Stage,Food Format,Ingredients,Created',
+        ...allFormulas.map(f => {
+          const owner = allUsers.find(u => u.id === f.user_id);
+          return [
+            escapeCsv(f.name || ''),
+            escapeCsv(owner?.email || ''),
+            f.species || '',
+            f.life_stage || '',
+            f.food_format || '',
+            (f.recipe || []).length,
+            f.created_at || '',
+          ].join(',');
+        })
+      ].join('\n');
+      downloadCsv(csv, 'formulas');
+    }
+
+    function downloadCsv(content, prefix) {
+      const blob = new Blob([content], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `petform-${prefix}-${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ---- HELPERS ----
+    function escapeHtml(s) { return String(s || '').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c])); }
+    function escapeCsv(s) { const v = String(s || ''); return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
+    function formatDate(s) { if (!s) return '—'; const d = new Date(s); return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
+
+    // ---- AUTO LOGIN IF SESSION EXISTS ----
+    (async () => {
+      const { data: { session } } = await sb.auth.getSession();
+      if (session && ADMIN_EMAILS.map(e => e.toLowerCase()).includes(session.user.email.toLowerCase())) {
+        currentSession = session;
+        document.getElementById('admin-email-display').textContent = session.user.email;
+        document.getElementById('gate').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+        await refreshAll();
+      }
+    })();
+
+    // Enter key submits login
+    document.getElementById('admin-password').addEventListener('keydown', e => {
+      if (e.key === 'Enter') signInAdmin();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Confirmed — PetForm Pro</title>
+  <style>
+    *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 16px;
+      padding: 40px;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+    }
+    .logo {
+      font-size: 64px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      color: #f0a500;
+      font-size: 24px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    p {
+      color: #8b949e;
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: 16px;
+    }
+    .status {
+      padding: 14px 18px;
+      border-radius: 10px;
+      margin: 20px 0;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .success { background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); color: #22c55e; }
+    .error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; }
+    .pending { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); color: #f59e0b; }
+    .btn {
+      display: inline-block;
+      background: #f0a500;
+      color: #000;
+      padding: 12px 28px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 14px;
+      margin-top: 12px;
+      cursor: pointer;
+      border: none;
+    }
+    .btn:hover { background: #ffb820; }
+    .footer {
+      margin-top: 24px;
+      font-size: 11px;
+      color: #555;
+    }
+    .spinner {
+      display: inline-block;
+      width: 32px;
+      height: 32px;
+      border: 3px solid #30363d;
+      border-top-color: #f0a500;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🐾</div>
+    <h1>PetForm Pro</h1>
+    <p>Email Verification</p>
+
+    <div id="status" class="status pending">
+      <div class="spinner" style="margin-bottom:10px"></div>
+      <div>Verifying your email...</div>
+    </div>
+
+    <a href="/" class="btn" id="continueBtn" style="display:none">Continue to PetForm Pro →</a>
+    <button class="btn" id="resendBtn" style="display:none; background:transparent; color:#f0a500; border:1px solid #f0a500;">Resend confirmation email</button>
+
+    <div class="footer">
+      Built by Ruhan Oberoi · For reference & educational purposes only
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script>
+    // === CONFIGURE THESE ===
+    const SUPABASE_URL = 'https://hlyqgjnywzbdombrwbky.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhseXFnam55d3piZG9tYnJ3Ymt5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MDQ0MTgsImV4cCI6MjA5MzA4MDQxOH0.oUW5O5iKn_3aazWXfSOQiR_7BM_BrBQ0_jqCQbj6_7c';
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const statusEl = document.getElementById('status');
+    const continueBtn = document.getElementById('continueBtn');
+    const resendBtn = document.getElementById('resendBtn');
+
+    // Supabase puts the access_token + refresh_token in the URL fragment after confirmation
+    // It auto-handles via getSession()
+    (async () => {
+      try {
+        // Wait a moment for Supabase to process the URL fragment
+        await new Promise(r => setTimeout(r, 500));
+        const { data: { session }, error } = await sb.auth.getSession();
+        if (error) throw error;
+
+        if (session && session.user && session.user.email_confirmed_at) {
+          statusEl.className = 'status success';
+          statusEl.innerHTML = '✅ <strong>Email verified!</strong><br>Welcome to PetForm Pro, ' + (session.user.user_metadata?.name || session.user.email) + '.';
+          continueBtn.style.display = 'inline-block';
+        } else if (session && session.user && !session.user.email_confirmed_at) {
+          statusEl.className = 'status pending';
+          statusEl.innerHTML = '⏳ <strong>Email not yet verified</strong><br>Please click the link in your email to confirm.';
+          resendBtn.style.display = 'inline-block';
+          resendBtn.onclick = async () => {
+            try {
+              await sb.auth.resend({ type: 'signup', email: session.user.email });
+              alert('Verification email resent! Check your inbox.');
+            } catch (e) { alert('Failed to resend: ' + e.message); }
+          };
+        } else {
+          // No session — token may have expired
+          statusEl.className = 'status error';
+          statusEl.innerHTML = '❌ <strong>Verification link expired or invalid.</strong><br>Please sign in again to receive a new email.';
+          continueBtn.style.display = 'inline-block';
+          continueBtn.textContent = 'Back to Sign In';
+        }
+      } catch (e) {
+        statusEl.className = 'status error';
+        statusEl.innerHTML = '❌ <strong>Verification failed</strong><br>' + e.message;
+        continueBtn.style.display = 'inline-block';
+        continueBtn.textContent = 'Back to Sign In';
+      }
+    })();
+  </script>
+</body>
+</html>
