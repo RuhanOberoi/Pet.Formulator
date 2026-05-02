@@ -34,6 +34,10 @@
 
     .container { max-width: 1280px; margin: 0 auto; padding: 20px; }
 
+    .setup-banner { background: rgba(245,158,11,0.10); border: 1px solid rgba(245,158,11,0.40); color: #f59e0b; padding: 14px 18px; border-radius: 10px; margin-bottom: 18px; font-size: 13px; line-height: 1.6; }
+    .setup-banner code { background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px; font-family: 'DM Mono', monospace; font-size: 12px; }
+    .setup-banner button { background: #f59e0b; color: #000; border: none; padding: 8px 14px; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 12px; margin-top: 8px; }
+
     .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin-bottom: 20px; }
     .stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 14px; }
     .stat-card .label { font-size: 10px; color: #8b949e; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 4px; }
@@ -71,6 +75,7 @@
 
     .loading, .empty { text-align: center; padding: 30px; color: #8b949e; font-size: 12px; }
     .footer-note { text-align: center; padding: 20px; font-size: 11px; color: #555; }
+    .footer-note code { background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-family: 'DM Mono', monospace; }
   </style>
 </head>
 <body>
@@ -80,7 +85,7 @@
       <div class="icon">🛡️</div>
       <h2>Admin Dashboard</h2>
       <p>Sign in with your PetForm Pro account.</p>
-      <input type="email" id="admin-email" placeholder="Your email" autocomplete="email">
+      <input type="email" id="admin-email" placeholder="Your email" autocomplete="email" value="ruhanoberoi@outlook.com">
       <input type="password" id="admin-password" placeholder="Password" autocomplete="current-password">
       <button id="signin-btn" onclick="signInAdmin()">🔐 Sign In</button>
       <div id="gate-err" class="err"></div>
@@ -101,9 +106,13 @@
     </div>
 
     <div class="container">
-      <div class="stats" id="stats">
-        <div class="loading">Loading stats...</div>
+      <!-- Setup banner shown if RLS policies aren't installed yet -->
+      <div id="setup-banner" class="setup-banner" style="display:none;">
+        <b>⚠ One-time setup required:</b> Run the SQL below in Supabase SQL Editor to grant your admin account access to all users' data. Right now you can only see your own row because of Row Level Security policies.<br>
+        <button onclick="showSetupSql()">📋 Show me the SQL</button>
       </div>
+
+      <div class="stats" id="stats"><div class="loading">Loading stats...</div></div>
 
       <div class="section">
         <div class="section-header">
@@ -146,7 +155,22 @@
       </div>
 
       <div class="footer-note">
-        🛡️ Admin Dashboard · Built by Ruhan Oberoi · Last refreshed: <span id="last-refresh">never</span>
+        🛡️ Admin: <code>ruhanoberoi@outlook.com</code> · Last refreshed: <span id="last-refresh">never</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SQL setup modal -->
+  <div id="sql-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100;align-items:center;justify-content:center;padding:20px;">
+    <div style="background:#161b22;border:1px solid #f59e0b;border-radius:12px;padding:24px;max-width:760px;width:100%;max-height:90vh;overflow:auto;">
+      <h2 style="color:#f59e0b;margin-bottom:8px;">📋 Run This SQL In Supabase</h2>
+      <p style="color:#8b949e;font-size:12px;margin-bottom:14px;line-height:1.6;">
+        Go to <a href="https://supabase.com/dashboard" target="_blank" style="color:#f0a500;">Supabase Dashboard</a> → your project → <b>SQL Editor</b> → <b>+ New query</b>. Paste the SQL below and click <b>Run</b>. Then come back here and click "Refresh".
+      </p>
+      <pre id="setup-sql" style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:14px;font-family:'DM Mono',monospace;font-size:11px;line-height:1.5;color:#e6edf3;overflow-x:auto;white-space:pre-wrap;"></pre>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button onclick="copySetupSql()" style="flex:1;background:#f0a500;color:#000;border:none;padding:12px;border-radius:8px;font-weight:700;cursor:pointer;">📋 Copy SQL</button>
+        <button onclick="document.getElementById('sql-modal').style.display='none'" style="background:transparent;color:#8b949e;border:1px solid #30363d;padding:12px 20px;border-radius:8px;font-weight:600;cursor:pointer;">Close</button>
       </div>
     </div>
   </div>
@@ -154,28 +178,61 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script>
     // ============================================================
-    // SUPABASE CONFIG (your keys baked in)
+    // CONFIG (your Supabase keys + admin email locked in)
     // ============================================================
     const SUPABASE_URL = 'https://hlyqgjnywzbdombrwbky.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhseXFnam55d3piZG9tYnJ3Ymt5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MDQ0MTgsImV4cCI6MjA5MzA4MDQxOH0.oUW5O5iKn_3aazWXfSOQiR_7BM_BrBQ0_jqCQbj6_7c';
 
-    // ============================================================
-    // ADMIN ACCESS
-    // Empty array = ANY signed-in user can access (simpler).
-    // To restrict: const ADMIN_EMAILS = ['your@emai.com'];
-    // ============================================================
-    const ADMIN_EMAILS = [];
+    const ADMIN_EMAIL = 'ruhanoberoi@outlook.com';
+
+    const SETUP_SQL = `-- ============================================================
+-- PetForm Pro — Admin Access Policies
+-- Grants ruhanoberoi@outlook.com full read access to all data
+-- ============================================================
+
+-- Drop any old admin policies (safe to re-run)
+DROP POLICY IF EXISTS "Admins can read all profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Admins can update all profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Admins can read all formulas" ON public.formulas;
+DROP POLICY IF EXISTS "Admins can read all ai usage" ON public.ai_usage;
+
+-- Admin can read all profiles
+CREATE POLICY "Admins can read all profiles"
+ON public.profiles FOR SELECT
+USING ( LOWER(auth.jwt() ->> 'email') = 'ruhanoberoi@outlook.com' );
+
+-- Admin can update any profile (for plan changes)
+CREATE POLICY "Admins can update all profiles"
+ON public.profiles FOR UPDATE
+USING ( LOWER(auth.jwt() ->> 'email') = 'ruhanoberoi@outlook.com' );
+
+-- Admin can read all formulas
+CREATE POLICY "Admins can read all formulas"
+ON public.formulas FOR SELECT
+USING ( LOWER(auth.jwt() ->> 'email') = 'ruhanoberoi@outlook.com' );
+
+-- Admin can read all AI usage (if table exists)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='ai_usage') THEN
+    EXECUTE 'CREATE POLICY "Admins can read all ai usage"
+      ON public.ai_usage FOR SELECT
+      USING ( LOWER(auth.jwt() ->> ''email'') = ''ruhanoberoi@outlook.com'' )';
+  END IF;
+END $$;
+
+-- Verify (should show the new policies)
+SELECT policyname, tablename FROM pg_policies WHERE schemaname='public' AND policyname LIKE 'Admins%';`;
 
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let allUsers = [];
     let allFormulas = [];
     let allAIUsage = null;
+    let currentUserId = null;
 
-    function isAuthorizedEmail(email) {
-      if (!email) return false;
-      if (ADMIN_EMAILS.length === 0) return true;
-      return ADMIN_EMAILS.map(e => e.toLowerCase()).includes(email.toLowerCase());
+    function isAdmin(email) {
+      return email && email.toLowerCase() === ADMIN_EMAIL;
     }
 
     async function signInAdmin() {
@@ -193,13 +250,13 @@
         const { data, error } = await sb.auth.signInWithPassword({ email, password });
         if (error) throw error;
 
-        if (!isAuthorizedEmail(data.user.email)) {
-          errEl.textContent = 'Access denied. Your email is not authorized.';
+        if (!isAdmin(data.user.email)) {
+          errEl.textContent = `Access denied. This dashboard is locked to ${ADMIN_EMAIL} only.`;
           await sb.auth.signOut();
           btn.disabled = false; btn.textContent = '🔐 Sign In';
           return;
         }
-        await showDashboard(data.user.email);
+        await showDashboard(data.user.email, data.user.id);
       } catch (e) {
         const msg = (e.message || '').toLowerCase();
         if (msg.includes('email not confirmed')) errEl.textContent = 'Please verify your email first.';
@@ -209,7 +266,8 @@
       }
     }
 
-    async function showDashboard(email) {
+    async function showDashboard(email, userId) {
+      currentUserId = userId;
       document.getElementById('admin-email-display').textContent = email;
       document.getElementById('gate').style.display = 'none';
       document.getElementById('dashboard').style.display = 'block';
@@ -240,6 +298,18 @@
       allUsers = await loadUsers();
       allFormulas = await loadFormulas();
       allAIUsage = await loadAIUsage();
+
+      // Detect if RLS policies are missing — if we only see our own row but auth.users has more
+      const banner = document.getElementById('setup-banner');
+      if (allUsers.length <= 1 && currentUserId) {
+        // Try to detect if there are more users by checking auth via a probe
+        // (Can't access auth.users directly with anon key, so we just show a hint)
+        banner.style.display = 'block';
+        banner.innerHTML = `<b>⚠ One-time setup required.</b> You're only seeing 1 user (yours). If you have other users in your Supabase Authentication tab, you need to install the admin RLS policy. <button onclick="showSetupSql()">📋 Show me the SQL</button> <button onclick="document.getElementById('setup-banner').style.display='none'" style="background:transparent;color:#f59e0b;border:1px solid #f59e0b;">Dismiss (only 1 user exists)</button>`;
+      } else {
+        banner.style.display = 'none';
+      }
+
       renderStats();
       renderUsers();
       renderFormulas();
@@ -348,7 +418,7 @@
       const updates = { plan };
       if (plan === 'pro' || plan === 'proplus') updates.upgraded_at = new Date().toISOString();
       const { error } = await sb.from('profiles').update(updates).eq('id', userId);
-      if (error) { alert('Error: ' + error.message); return; }
+      if (error) { alert('Error: ' + error.message + '\n\nMake sure the admin RLS policy is installed (click "Show me the SQL" banner).'); return; }
       await refreshAll();
     }
     window.upgradeUser = upgradeUser;
@@ -371,16 +441,33 @@
       a.href = url; a.download = `petform-${prefix}-${new Date().toISOString().slice(0,10)}.csv`;
       a.click(); URL.revokeObjectURL(url);
     }
+
+    function showSetupSql() {
+      document.getElementById('setup-sql').textContent = SETUP_SQL;
+      document.getElementById('sql-modal').style.display = 'flex';
+    }
+    window.showSetupSql = showSetupSql;
+
+    async function copySetupSql() {
+      try {
+        await navigator.clipboard.writeText(SETUP_SQL);
+        alert('✓ SQL copied to clipboard!\n\nNow:\n1. Go to Supabase Dashboard\n2. Click SQL Editor\n3. Click "+ New query"\n4. Paste (Ctrl+V)\n5. Click Run\n6. Come back and click Refresh');
+      } catch(e) {
+        alert('Copy failed. Please select the SQL text manually and copy it.');
+      }
+    }
+    window.copySetupSql = copySetupSql;
+
     function escapeHtml(s) { return String(s||'').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c])); }
     function csvVal(s) { const v = String(s||''); return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
     function formatDate(s) { if (!s) return '—'; return new Date(s).toLocaleDateString(); }
 
-    // Auto-login if session exists
+    // Auto-login if already signed in
     (async () => {
       try {
         const { data: { session } } = await sb.auth.getSession();
-        if (session && session.user && isAuthorizedEmail(session.user.email)) {
-          await showDashboard(session.user.email);
+        if (session && session.user && isAdmin(session.user.email)) {
+          await showDashboard(session.user.email, session.user.id);
         }
       } catch(e) { console.error(e); }
     })();
