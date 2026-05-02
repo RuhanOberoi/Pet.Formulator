@@ -50,16 +50,16 @@ const MAX_TOKENS_LIMIT = 2000;
 
 // Models we allow (prevent users from passing arbitrary models)
 const ALLOWED_MODELS = new Set([
-  'claude-sonnet-4-20250514',
+  'claude-sonnet-4-5',
   'claude-opus-4-7',
-  'claude-haiku-4-5-20251001',
+  'claude-haiku-4-5',
 ]);
 
 // Cost estimates (USD per 1M tokens)
 const COST_PER_MTOK = {
-  'claude-sonnet-4-20250514':    { input: 3,    output: 15 },
+  'claude-sonnet-4-5':    { input: 3,    output: 15 },
   'claude-opus-4-7':             { input: 15,   output: 75 },
-  'claude-haiku-4-5-20251001':   { input: 0.80, output: 4 },
+  'claude-haiku-4-5':   { input: 0.80, output: 4 },
 };
 
 // Usage thresholds for admin alerts
@@ -161,8 +161,8 @@ export default async function handler(req, res) {
 
   // -------- VALIDATE & SANITIZE THE REQUEST --------
   const body = req.body || {};
-  const requestedModel = body.model || 'claude-sonnet-4-20250514';
-  const model = ALLOWED_MODELS.has(requestedModel) ? requestedModel : 'claude-sonnet-4-20250514';
+  const requestedModel = body.model || 'claude-sonnet-4-5';
+  const model = ALLOWED_MODELS.has(requestedModel) ? requestedModel : 'claude-sonnet-4-5';
   const maxTokens = Math.min(body.max_tokens || 1500, MAX_TOKENS_LIMIT);
 
   if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
@@ -203,7 +203,7 @@ export default async function handler(req, res) {
     outputTokens = data.usage?.output_tokens || 0;
 
     // Calculate cost
-    const costRates = COST_PER_MTOK[model] || COST_PER_MTOK['claude-sonnet-4-20250514'];
+    const costRates = COST_PER_MTOK[model] || COST_PER_MTOK['claude-sonnet-4-5'];
     estimatedCost = (inputTokens / 1_000_000) * costRates.input + (outputTokens / 1_000_000) * costRates.output;
 
     // -------- LOG USAGE TO SUPABASE --------
