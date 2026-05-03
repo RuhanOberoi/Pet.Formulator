@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Help & FAQ — PetForm Pro</title>
+<meta name="description" content="Help and frequently asked questions for PetForm Pro pet food formulation platform. Get started, troubleshoot, learn about AAFCO standards.">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', 'Segoe UI', sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    line-height: 1.7;
+    min-height: 100vh;
+  }
+  .container {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+  header {
+    border-bottom: 1px solid #30363d;
+    padding-bottom: 24px;
+    margin-bottom: 32px;
+  }
+  .back-link {
+    color: #f0a500;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    display: inline-block;
+    margin-bottom: 18px;
+  }
+  .back-link:hover { text-decoration: underline; }
+  h1 {
+    font-size: 36px;
+    font-weight: 700;
+    color: #e6edf3;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    color: #8b949e;
+    font-size: 15px;
+  }
+
+  /* Quick navigation */
+  .quick-nav {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 36px;
+  }
+  .quick-nav-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #8b949e;
+    letter-spacing: 0.05em;
+    margin-bottom: 10px;
+  }
+  .quick-nav-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+  }
+  .quick-nav-links a {
+    color: #f0a500;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    border-bottom: 1px solid transparent;
+  }
+  .quick-nav-links a:hover {
+    border-bottom-color: #f0a500;
+  }
+
+  /* Category sections */
+  .category {
+    margin-bottom: 44px;
+  }
+  .category h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #f0a500;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .category-icon {
+    font-size: 22px;
+  }
+  .category-desc {
+    color: #8b949e;
+    font-size: 13px;
+    margin-bottom: 20px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #30363d;
+  }
+
+  /* Q&A items */
+  .qa {
+    margin-bottom: 22px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+  }
+  .qa:last-child {
+    border-bottom: none;
+  }
+  .qa-question {
+    font-size: 15px;
+    font-weight: 700;
+    color: #e6edf3;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .qa-question::before {
+    content: 'Q.';
+    color: #f0a500;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+  .qa-answer {
+    color: #c9d1d9;
+    font-size: 14px;
+    line-height: 1.7;
+    padding-left: 20px;
+  }
+  .qa-answer p {
+    margin-bottom: 10px;
+  }
+  .qa-answer p:last-child {
+    margin-bottom: 0;
+  }
+  .qa-answer ul, .qa-answer ol {
+    margin: 8px 0 12px 20px;
+  }
+  .qa-answer li {
+    margin-bottom: 6px;
+  }
+  .qa-answer strong { color: #e6edf3; }
+  .qa-answer a { color: #58a6ff; }
+  .qa-answer a:hover { text-decoration: underline; }
+  .qa-answer code {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: #f0a500;
+  }
+
+  /* Callouts */
+  .callout {
+    background: rgba(240, 165, 0, 0.08);
+    border-left: 3px solid #f0a500;
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: #c9d1d9;
+  }
+  .callout strong { color: #f0a500; }
+  .warning {
+    background: rgba(239, 68, 68, 0.08);
+    border-left: 3px solid #ef4444;
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: #c9d1d9;
+  }
+  .warning strong { color: #ef4444; }
+
+  /* Contact section */
+  .contact-section {
+    background: linear-gradient(135deg, rgba(240,165,0,0.10) 0%, rgba(167,139,250,0.08) 100%);
+    border: 1px solid rgba(240,165,0,0.3);
+    border-radius: 12px;
+    padding: 28px;
+    margin: 40px 0;
+    text-align: center;
+  }
+  .contact-section h3 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #f0a500;
+    margin-bottom: 8px;
+  }
+  .contact-section p {
+    color: #c9d1d9;
+    font-size: 14px;
+    margin-bottom: 14px;
+  }
+  .contact-button {
+    display: inline-block;
+    background: #f0a500;
+    color: #000;
+    text-decoration: none;
+    padding: 10px 20px;
+    border-radius: 7px;
+    font-weight: 700;
+    font-size: 13px;
+  }
+  .contact-button:hover { opacity: 0.9; }
+
+  footer {
+    margin-top: 50px;
+    padding-top: 24px;
+    border-top: 1px solid #30363d;
+    color: #8b949e;
+    font-size: 13px;
+    text-align: center;
+  }
+  footer a {
+    color: #8b949e;
+    margin: 0 12px;
+  }
+  footer a:hover { color: #f0a500; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <a href="/" class="back-link">← Back to PetForm Pro</a>
+    <h1>Help & FAQ</h1>
+    <p class="subtitle">Common questions, troubleshooting, and how to get the most out of PetForm Pro.</p>
+  </header>
+
+  <!-- Quick Navigation -->
+  <div class="quick-nav">
+    <div class="quick-nav-title">JUMP TO</div>
+    <div class="quick-nav-links">
+      <a href="#getting-started">Getting Started</a>
+      <a href="#using-tool">Using the Tool</a>
+      <a href="#aafco">AAFCO & FEDIAF</a>
+      <a href="#ai-features">AI Features</a>
+      <a href="#billing">Billing & Plans</a>
+      <a href="#troubleshooting">Troubleshooting</a>
+      <a href="#about">About & Legal</a>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- GETTING STARTED -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <section class="category" id="getting-started">
+    <h2><span class="category-icon">🚀</span> Getting Started</h2>
+    <p class="category-desc">New to PetForm Pro? Start here.</p>
+
+    <div class="qa">
+      <div class="qa-question">What is PetForm Pro?</div>
+      <div class="qa-answer">
+        <p>PetForm Pro is a pet food formulation tool that helps you build, analyse, and verify recipes for dogs and cats. It checks your formulas against AAFCO and FEDIAF nutritional standards, calculates ingredient costs, and gives you clear feedback on what's deficient or excessive.</p>
+        <p>It's designed for pet food formulators, manufacturers, veterinary nutritionists, and serious home cooks who want to make sure their recipes meet real nutritional requirements.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">I just signed up — what should I do first?</div>
+      <div class="qa-answer">
+        <p>When you sign up, you'll see a <strong>sample formula already loaded</strong> in the Builder — "Adult Dog Maintenance — Chicken & Rice". This shows you what a complete recipe looks like.</p>
+        <p>Try these to get familiar with the tool:</p>
+        <ul>
+          <li>Click on an ingredient amount in the recipe table to edit it — watch the totals change</li>
+          <li>Click the <strong>Compliance</strong> tab to see how the recipe stacks up against AAFCO standards</li>
+          <li>Click <strong>Ingredients</strong> tab to browse the catalog of 50+ built-in ingredients</li>
+          <li>When you're ready, click <strong>"Start Fresh"</strong> on the welcome banner to clear the sample and build your own</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">How do I build a recipe from scratch?</div>
+      <div class="qa-answer">
+        <ol>
+          <li>Go to the <strong>Builder</strong> tab</li>
+          <li>Set the <strong>species</strong> (Dog/Cat) and <strong>life stage</strong> (Adult, Puppy/Kitten, Senior, etc.) at the top</li>
+          <li>Choose a <strong>food format</strong> (Dry/Kibble, Wet/Canned, Raw, etc.) — this affects the moisture target</li>
+          <li>From the ingredient library on the left, click <strong>+ Add</strong> next to any ingredient</li>
+          <li>Adjust amounts in the recipe table</li>
+          <li>Aim for a 1000g (1kg) total — the tool will tell you when you're close</li>
+          <li>Click the <strong>Compliance</strong> tab to verify nutritional adequacy</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">My account works on multiple devices — how?</div>
+      <div class="qa-answer">
+        <p>Yes. When you sign up, your account is stored securely in the cloud (via Supabase). Your formulas, custom ingredients, and saved settings sync automatically across any device — phone, tablet, laptop, office computer.</p>
+        <p>Just sign in with the same email and password from any browser.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- USING THE TOOL -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <section class="category" id="using-tool">
+    <h2><span class="category-icon">🛠</span> Using the Tool</h2>
+    <p class="category-desc">Builder, Compliance, Ingredients, Custom Standards.</p>
+
+    <div class="qa">
+      <div class="qa-question">What does "As-Fed" vs "Dry Matter" mean?</div>
+      <div class="qa-answer">
+        <p>Two ways to express nutrient values:</p>
+        <ul>
+          <li><strong>As-Fed (AsF):</strong> Nutrient amounts in the food as it sits in the bowl, INCLUDING moisture. This is what you actually feed.</li>
+          <li><strong>Dry Matter (DM):</strong> Nutrient amounts AFTER removing all moisture. This lets you compare a wet food (75% moisture) to a kibble (10% moisture) on equal footing.</li>
+        </ul>
+        <p>AAFCO and FEDIAF requirements are typically stated on a <strong>Dry Matter</strong> basis. PetForm Pro defaults to As-Fed (matching commercial workflow), but you can toggle to DM in the Compliance tab.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">How do I add a custom ingredient?</div>
+      <div class="qa-answer">
+        <ol>
+          <li>Go to the <strong>Ingredients</strong> tab</li>
+          <li>Click <strong>+ Add Custom</strong> in the top right</li>
+          <li>Fill in the name, category, cost per kg, and key nutrient values</li>
+          <li>You can also import from the <strong>USDA Database</strong> (click "🔍 USDA Database") or upload a CSV/JSON file</li>
+        </ol>
+        <p>Custom ingredients sync to the cloud and appear alongside built-in ingredients in the Builder.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">Can I edit the built-in ingredient values?</div>
+      <div class="qa-answer">
+        <p>Yes. Click <strong>✎ Edit</strong> on any built-in ingredient. Your edits create a "MODIFIED" override that's saved to your account. The original built-in values stay intact for other users.</p>
+        <p>To revert to the original: click the <strong>↺</strong> reset button on a modified ingredient.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">What is the Auto-Fix Recipe feature?</div>
+      <div class="qa-answer">
+        <p>Click the <strong>✨ Fix Recipe</strong> button in the Builder toolbar. It analyses your current recipe and suggests adjustments to ingredient amounts to better meet AAFCO standards (e.g., "increase fish oil to boost omega-3", "add limestone to fix calcium deficiency").</p>
+        <p>This is a heuristic helper — always review the suggestions and use your professional judgement before applying them.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">How do I save my recipe?</div>
+      <div class="qa-answer">
+        <p>Click the <strong>💾 Save</strong> button in the Builder toolbar. Give your formula a name and optional notes. It's saved to your cloud library.</p>
+        <p>To load a saved formula, go to the <strong>Library</strong> tab and click on any saved formula.</p>
+        <div class="callout">
+          <strong>Free tier:</strong> 3 saved formulas. <strong>Pro tier:</strong> Unlimited saves.
+        </div>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">What are Custom Standards?</div>
+      <div class="qa-answer">
+        <p>Custom Standards let you define your own nutrient targets that go beyond AAFCO/FEDIAF — useful for:</p>
+        <ul>
+          <li>Veterinary therapeutic diets (e.g., kidney support, weight loss)</li>
+          <li>Breed-specific requirements</li>
+          <li>Internal quality standards for a brand</li>
+          <li>Research formulations</li>
+        </ul>
+        <p>Click <strong>+ New Standard</strong> in the Builder, prefill from AAFCO or FEDIAF as a starting point, then adjust min/max values for any nutrient.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">How do I export my formula?</div>
+      <div class="qa-answer">
+        <p>From the Library tab or after building a formula:</p>
+        <ul>
+          <li><strong>PDF Report:</strong> Click "Export PDF" — generates a printable summary</li>
+          <li><strong>CSV/Excel:</strong> Click "Export CSV" — gets all ingredients and nutrient values as a spreadsheet</li>
+          <li><strong>JSON:</strong> For backup or sharing with another PetForm Pro user</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- AAFCO & FEDIAF -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <section class="category" id="aafco">
+    <h2><span class="category-icon">📋</span> AAFCO & FEDIAF Basics</h2>
+    <p class="category-desc">What these standards mean and how PetForm Pro uses them.</p>
+
+    <div class="qa">
+      <div class="qa-question">What is AAFCO?</div>
+      <div class="qa-answer">
+        <p>AAFCO (Association of American Feed Control Officials) publishes nutritional adequacy standards for pet foods sold in the United States. Their nutrient profiles list minimum (and sometimes maximum) levels of protein, fat, vitamins, minerals, and amino acids needed for dogs and cats at different life stages.</p>
+        <p>PetForm Pro uses AAFCO 2023 nutrient profiles by default.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">What is FEDIAF?</div>
+      <div class="qa-answer">
+        <p>FEDIAF (European Pet Food Industry Federation) is the European equivalent of AAFCO. Their nutritional guidelines apply to pet foods sold in the EU and UK. Some nutrient minimums and maximums differ from AAFCO.</p>
+        <p>You can switch between AAFCO and FEDIAF in the Builder's standards selector.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">Does meeting AAFCO mean my recipe is "safe"?</div>
+      <div class="qa-answer">
+        <div class="warning">
+          <strong>⚠ Important:</strong> Meeting AAFCO standards is necessary but NOT sufficient for individual pet health.
+        </div>
+        <p>AAFCO standards are minimums for healthy adult dogs and cats. They do NOT account for:</p>
+        <ul>
+          <li>Individual health conditions (kidney disease, diabetes, allergies, etc.)</li>
+          <li>Breed-specific predispositions</li>
+          <li>Bioavailability of nutrients from specific ingredients</li>
+          <li>Long-term feeding effects</li>
+        </ul>
+        <p>Always consult a veterinarian or veterinary nutritionist before feeding any home-formulated diet, especially to pets with existing health conditions, growing puppies/kittens, or pregnant/lactating animals.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">Why does my recipe show some nutrients as deficient?</div>
+      <div class="qa-answer">
+        <p>The Compliance tab compares your recipe against AAFCO/FEDIAF requirements. If a nutrient falls below the minimum, you'll see a red warning with the gap (e.g., "Calcium: 0.85% DM, needs ≥1.0% DM").</p>
+        <p>To fix deficiencies:</p>
+        <ul>
+          <li>Look at the <strong>top contributor</strong> hint shown next to each warning — it suggests which ingredient most affects that nutrient</li>
+          <li>Add more of that ingredient, or add a supplement (limestone for calcium, fish oil for DHA, etc.)</li>
+          <li>Use the <strong>✨ Fix Recipe</strong> button for automated suggestions</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- AI FEATURES -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <section class="category" id="ai-features">
+    <h2><span class="category-icon">✨</span> AI Features</h2>
+    <p class="category-desc">AI Builder, AI Analyser, and usage limits.</p>
+
+    <div class="qa">
+      <div class="qa-question">What does the AI Builder do?</div>
+      <div class="qa-answer">
+        <p>Describe what you want in plain English (e.g., "build a grain-free senior dog food using salmon and sweet potato") and the AI generates a complete formula meeting AAFCO standards. You can refine it, ask for changes, or apply it directly to the Builder.</p>
+        <p>AI Builder is available on Pro and Pro+ plans.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">What does the AI Analyser do?</div>
+      <div class="qa-answer">
+        <p>Looks at your current recipe and explains what's working, what's not, and how to improve it. Different from the Auto-Fix button — the Analyser gives you context and reasoning, not just numerical suggestions.</p>
+        <p>Useful when you want to understand WHY a nutrient is off, not just FIX it.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">How many AI calls do I get per month?</div>
+      <div class="qa-answer">
+        <ul>
+          <li><strong>Free:</strong> 0 AI calls</li>
+          <li><strong>Pro ($14/mo):</strong> 20 AI calls/month</li>
+          <li><strong>Pro+ ($29/mo):</strong> 100 AI calls/month</li>
+        </ul>
+        <p>Counters reset on the 1st of each calendar month.</p>
+        <p>If you upgrade mid-month, you keep your used count but get the higher limit. For example, if you've used 5 Pro calls (5/20) and upgrade to Pro+, you'll see 5/100.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">What's the difference between AI Builder and AI Analyser?</div>
+      <div class="qa-answer">
+        <p><strong>AI Builder:</strong> Creates a NEW recipe from your description.</p>
+        <p><strong>AI Analyser:</strong> Reviews your EXISTING recipe and gives feedback.</p>
+        <p>Both count toward your monthly AI quota.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">Are AI suggestions safe to feed my pet?</div>
+      <div class="qa-answer">
+        <div class="warning">
+          <strong>⚠ Important:</strong> AI outputs are starting points, not veterinary prescriptions.
+        </div>
+        <p>The AI uses Anthropic's Claude model and follows AAFCO/FEDIAF guidelines, but:</p>
+        <ul>
+          <li>It cannot account for your pet's specific health needs</li>
+          <li>It can occasionally make mistakes in nutrient calculations</li>
+          <li>It doesn't replace professional veterinary advice</li>
+        </ul>
+        <p>Always verify AI-generated formulas with the Compliance tab AND consult a vet before feeding.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- BILLING -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <section class="category" id="billing">
+    <h2><span class="category-icon">💳</span> Billing & Plans</h2>
+    <p class="category-desc">Plans, payment, refunds, cancellation.</p>
+
+    <div class="qa">
+      <div class="qa-question">What plans are available?</div>
+      <div class="qa-answer">
+        <ul>
+          <li><strong>Free:</strong> 3 saved formulas, no AI features</li>
+          <li><strong>Pro — $14/month:</strong> Unlimited formulas, 20 AI calls/month</li>
+          <li><strong>Pro+ — $29/month:</strong> Unlimited formulas, 100 AI calls/month, priority support</li>
+        </ul>
+        <p>All plans include access to AAFCO/FEDIAF compliance, custom standards, custom ingredients, and the full ingredient catalog.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">How do I upgrade my plan?</div>
+      <div class="qa-answer">
+        <p>From the app, click your account menu (top right) → <strong>Upgrade</strong>. Or click any "Upgrade" button when prompted.</p>
+        <p>If you're already a Pro subscriber wanting to switch to Pro+: payments and tier changes are handled automatically with pro-rated billing. You'll be charged the difference for the remainder of your current billing cycle.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">How do I cancel?</div>
+      <div class="qa-answer">
+        <p>Click <strong>"manage"</strong> next to your plan badge in the app. This opens the Stripe billing portal where you can cancel, change payment method, or view invoices.</p>
+        <p>Cancelling stops future charges. You keep access to paid features until the end of your current billing period.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">What's your refund policy?</div>
+      <div class="qa-answer">
+        <p>We offer <strong>pro-rated refunds for unused subscription time</strong>. If you cancel mid-cycle, you can request a refund for the days remaining.</p>
+        <p>To request: email <a href="mailto:admin.petfoodformulator@gmail.com">admin.petfoodformulator@gmail.com</a> with your account email. Refunds are processed within 14 business days.</p>
+        <p>For full details, see our <a href="/terms.html">Terms of Service</a>.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">What payment methods do you accept?</div>
+      <div class="qa-answer">
+        <p>All major credit and debit cards through Stripe. We do not see or store your card details — Stripe handles all payment processing.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">Do you offer discounts for students or non-profits?</div>
+      <div class="qa-answer">
+        <p>Not at this time, but if you have a specific use case (vet school class, non-profit shelter, research project), please email <a href="mailto:admin.petfoodformulator@gmail.com">admin.petfoodformulator@gmail.com</a> — we may be able to offer credits via our admin tools.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- TROUBLESHOOTING -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <section class="category" id="troubleshooting">
+    <h2><span class="category-icon">🔧</span> Troubleshooting</h2>
+    <p class="category-desc">Common issues and how to fix them.</p>
+
+    <div class="qa">
+      <div class="qa-question">My save failed — where did my formula go?</div>
+      <div class="qa-answer">
+        <p>If a cloud save fails, your formula is automatically kept in your browser's local storage. You won't lose your work.</p>
+        <p>Try refreshing the page — the formula should still be there. Then try saving again.</p>
+        <p>If saves keep failing, check:</p>
+        <ul>
+          <li>Are you signed in? (Sometimes sessions time out — sign out and back in)</li>
+          <li>Is your internet stable?</li>
+          <li>Are you on the free tier with 3 formulas already saved? (Free tier has a 3-formula limit)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">I paid for Pro+ but my AI counter still shows 20 calls</div>
+      <div class="qa-answer">
+        <p>This usually resolves within 30 seconds of payment. If not:</p>
+        <ol>
+          <li>Sign out completely</li>
+          <li>Sign back in</li>
+          <li>Your AI counter should now show "X / 100"</li>
+        </ol>
+        <p>If it still shows 20, please contact support with your payment receipt.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">The AI says "quota exceeded" but I haven't used many calls</div>
+      <div class="qa-answer">
+        <p>Check the counter at the top of the app — it shows your used calls / limit for this month.</p>
+        <p>The counter resets on the 1st of each calendar month, NOT 30 days from your subscription date.</p>
+        <p>If the counter looks wrong, sign out and back in to refresh.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">The Builder/Ingredients tab looks broken or weird</div>
+      <div class="qa-answer">
+        <p>Try a hard refresh: <code>Ctrl+Shift+R</code> (Windows/Linux) or <code>Cmd+Shift+R</code> (Mac). This clears the browser cache and reloads the latest version.</p>
+        <p>If that doesn't help, try opening the app in incognito/private mode to rule out browser extensions or stale cache.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">I forgot my password</div>
+      <div class="qa-answer">
+        <p>On the sign-in page, click <strong>"Forgot password?"</strong> and enter your email. You'll receive a password reset link.</p>
+        <p>If the email doesn't arrive, check your spam folder.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">I can't find my saved formulas</div>
+      <div class="qa-answer">
+        <p>Saved formulas appear in the <strong>Library</strong> tab. If they're missing:</p>
+        <ul>
+          <li>Make sure you're signed in with the same email you used to save them</li>
+          <li>Refresh the page</li>
+          <li>If you saved them while offline, they may still be in your browser only — sign in and they should sync</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- ABOUT -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <section class="category" id="about">
+    <h2><span class="category-icon">ℹ</span> About & Legal</h2>
+    <p class="category-desc">About PetForm Pro and links to legal documents.</p>
+
+    <div class="qa">
+      <div class="qa-question">Who built PetForm Pro?</div>
+      <div class="qa-answer">
+        <p>PetForm Pro is built and operated by Ruhan Oberoi as a sole trader business based in Australia. Contact: <a href="mailto:admin.petfoodformulator@gmail.com">admin.petfoodformulator@gmail.com</a>.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">What data do you collect?</div>
+      <div class="qa-answer">
+        <p>The minimum needed to run the service: your email address, the formulas and ingredients you create, your AI usage history, and payment info processed by Stripe (we don't see your card details).</p>
+        <p>Full details: <a href="/privacy.html">Privacy Policy</a>.</p>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">Where can I read your Terms of Service?</div>
+      <div class="qa-answer">
+        <p>The full Terms of Service are at <a href="/terms.html">/terms.html</a>. Key points:</p>
+        <ul>
+          <li>You retain ownership of your formulas — we don't sell or train AI on them</li>
+          <li>Pro-rated refunds available</li>
+          <li>This tool is a guide, not professional veterinary advice</li>
+          <li>Australian Consumer Law applies to Australian users</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">Is this a substitute for a veterinarian?</div>
+      <div class="qa-answer">
+        <div class="warning">
+          <strong>⚠ No.</strong> PetForm Pro is intended to be used as a guide to help formulate recipes for dogs and cats. Please consult your veterinarian before changing your pet's diet. This tool does not take any responsibility for any harm to your pet — it is provided as a guide to help you check whether your dog or cat is getting the right nutrients in their diet.
+        </div>
+      </div>
+    </div>
+
+    <div class="qa">
+      <div class="qa-question">Can I use PetForm Pro for commercial pet food production?</div>
+      <div class="qa-answer">
+        <p>Yes, but you're responsible for verifying compliance with all applicable laws and regulations in your jurisdiction. PetForm Pro provides nutritional analysis based on AAFCO/FEDIAF guidelines, but commercial pet food production has additional requirements (labeling laws, manufacturing standards, ingredient sourcing verification, etc.) that vary by country.</p>
+        <p>We strongly recommend working with a Board-Certified Veterinary Nutritionist (DACVN, ECVCN, or equivalent) for commercial formulation.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Contact section -->
+  <div class="contact-section">
+    <h3>Still need help?</h3>
+    <p>Can't find what you're looking for? Send us a message and we'll respond within 1-2 business days.</p>
+    <a href="mailto:admin.petfoodformulator@gmail.com" class="contact-button">📧 Email Support</a>
+  </div>
+
+  <footer>
+    © 2026 PetForm Pro. All rights reserved.<br>
+    <a href="/">Home</a> · <a href="/help.html">Help</a> · <a href="/privacy.html">Privacy</a> · <a href="/terms.html">Terms</a> · <a href="mailto:admin.petfoodformulator@gmail.com">Contact</a>
+  </footer>
+</div>
+</body>
+</html>
