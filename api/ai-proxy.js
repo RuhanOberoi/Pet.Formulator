@@ -98,13 +98,28 @@ export default async function handler(req, res) {
   // -------- CHECK USER'S PLAN --------
   const { data: profile } = await supabase
     .from('profiles')
-    .select('plan, email, name')
+    .select('plan, email, name, bonus_credits, bonus_credits_month')
     .eq('id', user.id)
     .single();
 
   const plan = (profile && profile.plan) || 'free';
-  const monthlyLimit = PLAN_LIMITS[plan] || 0;
+  const baseLimit = PLAN_LIMITS[plan] || 0;
   const dailyLimit = DAILY_LIMITS[plan] || 0;
+
+  // -------- BONUS CREDITS HANDLING --------
+  // Bonus credits are valid only for the month they were granted.
+  // Format: 'YYYY-MM' (e.g., '2026-05')
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  let bonusCredits = 0;
+  if (profile && profile.bonus_credits_month === currentMonthKey) {
+    bonusCredits = profile.bonus_credits || 0;
+  }
+  // If bonus is from a previous month, it's expired (we don't auto-clear it here
+  // to keep this read-only — admin dashboard can show it as expired)
+
+  // Effective monthly limit = plan limit + active bonus credits
+  const monthlyLimit = baseLimit + bonusCredits;
 
   if (monthlyLimit === 0) {
     return res.status(402).json({
@@ -133,11 +148,14 @@ export default async function handler(req, res) {
   }
 
   if ((monthlyUsage || 0) >= monthlyLimit) {
+    const bonusText = bonusCredits > 0 ? ` (incl. ${bonusCredits} bonus)` : '';
     return res.status(429).json({
       error: 'monthly_quota_exceeded',
-      message: `You've used all ${monthlyLimit} of your AI calls this month on the ${plan.toUpperCase()} plan. ${plan === 'pro' ? 'Upgrade to Pro+ for 5x more.' : 'Your quota resets on the 1st of next month.'}`,
+      message: `You've used all ${monthlyLimit}${bonusText} of your AI calls this month on the ${plan.toUpperCase()} plan. ${plan === 'pro' ? 'Upgrade to Pro+ for 5x more.' : 'Your quota resets on the 1st of next month.'}`,
       usage: monthlyUsage,
       limit: monthlyLimit,
+      base_limit: baseLimit,
+      bonus_credits: bonusCredits,
       plan,
     });
   }
