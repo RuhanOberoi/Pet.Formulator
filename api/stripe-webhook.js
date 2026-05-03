@@ -67,15 +67,30 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Helper: map plan metadata to actual plan tier
+    const mapPlanToTier = (planMeta) => {
+      if (planMeta === 'proplus' || planMeta === 'yearly_proplus') return 'proplus';
+      if (planMeta === 'business' || planMeta === 'yearly_business') return 'business';
+      // 'monthly', 'yearly', or anything else → pro
+      return 'pro';
+    };
+
+    // Helper: find user by stripe_customer_id (fallback when metadata.userId missing)
+    const findUserByCustomer = async (customerId) => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('stripe_customer_id', customerId)
+        .single();
+      return data?.id;
+    };
+
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
         const userId = session.metadata?.userId || session.subscription_data?.metadata?.userId;
         const planMeta = session.metadata?.plan || session.subscription_data?.metadata?.plan || 'monthly';
-        // Map checkout plan name to actual plan tier
-        let planTier = 'pro';
-        if (planMeta === 'proplus' || planMeta === 'yearly_proplus') planTier = 'proplus';
-        else if (planMeta === 'business') planTier = 'business';
+        const planTier = mapPlanToTier(planMeta);
         if (userId) {
           await supabase
             .from('profiles')
@@ -86,31 +101,61 @@ export default async function handler(req, res) {
               upgraded_at: new Date().toISOString(),
             })
             .eq('id', userId);
-          console.log(`✓ Upgraded user ${userId} to ${planTier}`);
+          console.log(`✓ checkout.session.completed: Upgraded user ${userId} to ${planTier} (planMeta="${planMeta}")`);
         }
         break;
       }
 
       case 'customer.subscription.updated': {
         const sub = event.data.object;
-        const userId = sub.metadata?.userId;
+        let userId = sub.metadata?.userId;
+        // Fallback: find user by customer ID if metadata is missing
+        if (!userId) userId = await findUserByCustomer(sub.customer);
+
+        const planMeta = sub.metadata?.plan;
         const isActive = sub.status === 'active' || sub.status === 'trialing';
+
         if (userId) {
+          // CRITICAL FIX: Read plan from metadata, don't hardcode 'pro'
+          // If subscription is being cancelled or past_due, downgrade to free
+          // If subscription is active, use the plan tier from metadata
+          let planValue;
+          if (!isActive) {
+            planValue = 'free';
+          } else if (planMeta) {
+            planValue = mapPlanToTier(planMeta);
+          } else {
+            // No metadata available — try to derive from price ID
+            const priceId = sub.items?.data?.[0]?.price?.id;
+            if (priceId === process.env.STRIPE_PRICE_PROPLUS_MONTHLY ||
+                priceId === process.env.STRIPE_PRICE_PROPLUS_YEARLY) {
+              planValue = 'proplus';
+            } else if (priceId === process.env.STRIPE_PRICE_BUSINESS_MONTHLY ||
+                       priceId === process.env.STRIPE_PRICE_BUSINESS_YEARLY) {
+              planValue = 'business';
+            } else {
+              planValue = 'pro';
+            }
+          }
+
           await supabase
             .from('profiles')
             .update({
-              plan: isActive ? 'pro' : 'free',
+              plan: planValue,
               stripe_subscription_status: sub.status,
             })
             .eq('id', userId);
-          console.log(`✓ Updated user ${userId} subscription status: ${sub.status}`);
+          console.log(`✓ customer.subscription.updated: User ${userId} → plan=${planValue}, status=${sub.status}, planMeta="${planMeta}"`);
+        } else {
+          console.warn(`⚠ customer.subscription.updated: No user found for customer ${sub.customer}`);
         }
         break;
       }
 
       case 'customer.subscription.deleted': {
         const sub = event.data.object;
-        const userId = sub.metadata?.userId;
+        let userId = sub.metadata?.userId;
+        if (!userId) userId = await findUserByCustomer(sub.customer);
         if (userId) {
           await supabase
             .from('profiles')
@@ -120,7 +165,7 @@ export default async function handler(req, res) {
               cancelled_at: new Date().toISOString(),
             })
             .eq('id', userId);
-          console.log(`✓ Cancelled subscription for user ${userId}`);
+          console.log(`✓ customer.subscription.deleted: Cancelled subscription for user ${userId}`);
         }
         break;
       }
@@ -128,19 +173,13 @@ export default async function handler(req, res) {
       case 'invoice.payment_failed': {
         const invoice = event.data.object;
         const customerId = invoice.customer;
-        // Find user by customer ID
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('stripe_customer_id', customerId)
-          .single();
-        if (profile) {
+        const userId = await findUserByCustomer(customerId);
+        if (userId) {
           await supabase
             .from('profiles')
             .update({ stripe_subscription_status: 'past_due' })
-            .eq('id', profile.id);
-          // Optionally: send email reminding them to update payment
-          console.log(`⚠ Payment failed for user ${profile.id}`);
+            .eq('id', userId);
+          console.log(`⚠ invoice.payment_failed: Payment failed for user ${userId}`);
         }
         break;
       }
