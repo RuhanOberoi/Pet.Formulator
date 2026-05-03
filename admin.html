@@ -154,6 +154,65 @@
         <div id="ai-usage-content"><div class="loading">Loading...</div></div>
       </div>
 
+      <!-- ═══════════════════════════════════════════════════════ -->
+      <!-- BONUS CREDITS SECTION                                    -->
+      <!-- ═══════════════════════════════════════════════════════ -->
+      <div class="section">
+        <div class="section-header">
+          <h3>💎 Grant / Adjust Bonus AI Credits</h3>
+          <div style="font-size:10px;color:#8b949e;">Credits expire at month end · Audit logged</div>
+        </div>
+        <div style="padding:18px;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:10px;margin-bottom:12px;">
+            <div>
+              <label style="display:block;font-size:10px;color:#8b949e;font-weight:700;letter-spacing:0.05em;margin-bottom:4px;">USER EMAIL</label>
+              <input type="email" id="grant-email" placeholder="user@example.com"
+                style="width:100%;padding:8px 10px;background:#0d1117;border:1px solid #30363d;border-radius:5px;color:#e6edf3;font-size:12px;outline:none;" />
+            </div>
+            <div>
+              <label style="display:block;font-size:10px;color:#8b949e;font-weight:700;letter-spacing:0.05em;margin-bottom:4px;">AMOUNT (+ to add, - to remove)</label>
+              <input type="number" id="grant-amount" placeholder="50" step="1"
+                style="width:100%;padding:8px 10px;background:#0d1117;border:1px solid #30363d;border-radius:5px;color:#e6edf3;font-size:12px;outline:none;" />
+            </div>
+            <div>
+              <label style="display:block;font-size:10px;color:#8b949e;font-weight:700;letter-spacing:0.05em;margin-bottom:4px;">REASON (optional)</label>
+              <input type="text" id="grant-reason" placeholder="Beta tester reward"
+                style="width:100%;padding:8px 10px;background:#0d1117;border:1px solid #30363d;border-radius:5px;color:#e6edf3;font-size:12px;outline:none;" />
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button onclick="lookupUser()"
+              style="background:transparent;border:1px solid #58a6ff;color:#58a6ff;padding:8px 16px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;">
+              🔍 Look Up User
+            </button>
+            <button onclick="grantCredits()"
+              style="background:#a78bfa;border:none;color:#000;padding:8px 16px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;">
+              💎 Grant / Adjust Credits
+            </button>
+            <button onclick="resetUserBonus()"
+              style="background:transparent;border:1px solid #ef4444;color:#ef4444;padding:8px 16px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;">
+              ↺ Reset Bonus to 0
+            </button>
+          </div>
+
+          <!-- Lookup result panel -->
+          <div id="grant-lookup-result" style="margin-top:14px;display:none;padding:12px 14px;background:rgba(0,0,0,0.3);border:1px solid #30363d;border-radius:6px;"></div>
+
+          <!-- Action result -->
+          <div id="grant-result" style="margin-top:10px;font-size:12px;"></div>
+        </div>
+
+        <!-- Audit log -->
+        <div style="border-top:1px solid #30363d;padding:14px 18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h4 style="font-size:12px;color:#8b949e;font-weight:700;letter-spacing:0.05em;">📜 RECENT GRANTS (LAST 30)</h4>
+            <button onclick="loadGrantHistory()" style="background:transparent;border:1px solid #30363d;color:#8b949e;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;">Refresh</button>
+          </div>
+          <div id="grant-history"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+
       <div class="footer-note">
         🛡️ Admin: <code>ruhanoberoi@outlook.com</code> · Last refreshed: <span id="last-refresh">never</span>
       </div>
@@ -461,6 +520,270 @@ SELECT policyname, tablename FROM pg_policies WHERE schemaname='public' AND poli
     function escapeHtml(s) { return String(s||'').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c])); }
     function csvVal(s) { const v = String(s||''); return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
     function formatDate(s) { if (!s) return '—'; return new Date(s).toLocaleDateString(); }
+
+    // ═══════════════════════════════════════════════════════
+    // BONUS CREDIT FUNCTIONS
+    // ═══════════════════════════════════════════════════════
+    function currentMonthKey() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    function setGrantResult(html, color = '#8b949e') {
+      const el = document.getElementById('grant-result');
+      if (el) {
+        el.innerHTML = html;
+        el.style.color = color;
+      }
+    }
+
+    async function lookupUser() {
+      const email = document.getElementById('grant-email').value.trim().toLowerCase();
+      if (!email) {
+        setGrantResult('⚠ Please enter an email first', '#ef4444');
+        return;
+      }
+
+      const lookupEl = document.getElementById('grant-lookup-result');
+      lookupEl.style.display = 'block';
+      lookupEl.innerHTML = '<div style="color:#8b949e;font-size:11px;">🔍 Looking up...</div>';
+
+      try {
+        const { data: profile, error } = await sb
+          .from('profiles')
+          .select('id, email, name, plan, bonus_credits, bonus_credits_month, created_at')
+          .ilike('email', email)
+          .single();
+
+        if (error || !profile) {
+          lookupEl.innerHTML = `<div style="color:#ef4444;font-size:12px;">❌ User not found: <code>${escapeHtml(email)}</code></div>`;
+          return;
+        }
+
+        // Get usage this month
+        const monthStart = new Date();
+        monthStart.setDate(1);
+        monthStart.setHours(0, 0, 0, 0);
+        const { count: usageThisMonth } = await sb
+          .from('ai_usage')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', profile.id)
+          .gte('created_at', monthStart.toISOString());
+
+        const PLAN_LIMITS = { free: 0, pro: 20, proplus: 100, business: 500 };
+        const baseLimit = PLAN_LIMITS[profile.plan] || 0;
+        const activeBonusMonth = currentMonthKey();
+        const activeBonus = profile.bonus_credits_month === activeBonusMonth ? (profile.bonus_credits || 0) : 0;
+        const expiredBonus = profile.bonus_credits_month && profile.bonus_credits_month !== activeBonusMonth
+          ? (profile.bonus_credits || 0) : 0;
+        const totalLimit = baseLimit + activeBonus;
+        const used = usageThisMonth || 0;
+        const remaining = totalLimit - used;
+
+        lookupEl.innerHTML = `
+          <div style="font-size:12px;color:#e6edf3;line-height:1.7;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <strong>${escapeHtml(profile.email)}</strong>
+              <span class="pill ${profile.plan || 'free'}">${(profile.plan || 'free').toUpperCase()}</span>
+              ${profile.name ? `<span style="color:#8b949e;font-size:11px;">${escapeHtml(profile.name)}</span>` : ''}
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;font-size:11px;">
+              <div><span style="color:#8b949e;">Plan limit:</span> <b>${baseLimit}/mo</b></div>
+              <div><span style="color:#8b949e;">Active bonus:</span> <b style="color:${activeBonus > 0 ? '#a78bfa' : '#8b949e'};">+${activeBonus}</b></div>
+              <div><span style="color:#8b949e;">Used this month:</span> <b style="color:${used >= totalLimit ? '#ef4444' : '#f0a500'};">${used}</b></div>
+              <div><span style="color:#8b949e;">Remaining:</span> <b style="color:${remaining > 0 ? '#22c55e' : '#ef4444'};">${remaining}</b></div>
+              <div><span style="color:#8b949e;">Total limit:</span> <b>${totalLimit}</b></div>
+              <div><span style="color:#8b949e;">User since:</span> <b>${formatDate(profile.created_at)}</b></div>
+            </div>
+            ${expiredBonus > 0 ? `<div style="margin-top:8px;padding:6px 10px;background:rgba(139,148,158,0.15);border-radius:4px;font-size:10px;color:#8b949e;">⚠ Has ${expiredBonus} expired bonus credits from ${profile.bonus_credits_month} (will clear on next grant)</div>` : ''}
+          </div>
+        `;
+
+        // Cache the user ID for the grant function
+        window._lookupUserId = profile.id;
+        window._lookupUserPlan = profile.plan;
+      } catch (e) {
+        lookupEl.innerHTML = `<div style="color:#ef4444;">Error: ${escapeHtml(e.message || String(e))}</div>`;
+      }
+    }
+    window.lookupUser = lookupUser;
+
+    async function grantCredits() {
+      const email = document.getElementById('grant-email').value.trim().toLowerCase();
+      const amountStr = document.getElementById('grant-amount').value.trim();
+      const reason = document.getElementById('grant-reason').value.trim();
+      const amount = parseInt(amountStr, 10);
+
+      if (!email) { setGrantResult('⚠ Email is required', '#ef4444'); return; }
+      if (isNaN(amount) || amount === 0) { setGrantResult('⚠ Amount must be a non-zero number (use negative to reduce)', '#ef4444'); return; }
+      if (Math.abs(amount) > 10000) { setGrantResult('⚠ Amount too large. Max ±10,000', '#ef4444'); return; }
+
+      const action = amount > 0 ? 'GRANT' : 'REDUCE';
+      const confirmMsg = `${action} ${Math.abs(amount)} credits ${amount > 0 ? 'to' : 'from'} ${email}?\n\nReason: ${reason || '(none provided)'}\n\nThis will be logged in the audit trail.`;
+      if (!confirm(confirmMsg)) return;
+
+      setGrantResult('⏳ Processing...', '#8b949e');
+
+      try {
+        // Look up user first
+        const { data: profile, error: profileErr } = await sb
+          .from('profiles')
+          .select('id, email, plan, bonus_credits, bonus_credits_month')
+          .ilike('email', email)
+          .single();
+
+        if (profileErr || !profile) {
+          setGrantResult(`❌ User not found: ${email}`, '#ef4444');
+          return;
+        }
+
+        const monthKey = currentMonthKey();
+        // If existing bonus is from a different month, treat as 0 (expired)
+        const existingActive = profile.bonus_credits_month === monthKey ? (profile.bonus_credits || 0) : 0;
+        let newBonus = existingActive + amount;
+        if (newBonus < 0) newBonus = 0;  // never go negative
+
+        // Get current admin email for audit log
+        const { data: { session } } = await sb.auth.getSession();
+        const adminEmail = session?.user?.email || 'unknown';
+
+        // Update profile
+        const { error: updateErr } = await sb
+          .from('profiles')
+          .update({
+            bonus_credits: newBonus,
+            bonus_credits_month: monthKey,
+          })
+          .eq('id', profile.id);
+
+        if (updateErr) {
+          setGrantResult(`❌ Update failed: ${updateErr.message}`, '#ef4444');
+          return;
+        }
+
+        // Insert audit log
+        const { error: auditErr } = await sb
+          .from('credit_grants')
+          .insert({
+            user_id: profile.id,
+            granted_by_email: adminEmail,
+            amount: amount,
+            reason: reason || '',
+            user_email_at_time: profile.email,
+            user_plan_at_time: profile.plan || 'free',
+          });
+
+        if (auditErr) {
+          console.warn('Audit log failed (but grant applied):', auditErr);
+        }
+
+        setGrantResult(
+          `✓ ${action === 'GRANT' ? 'Granted' : 'Reduced'} ${Math.abs(amount)} credits ${amount > 0 ? 'to' : 'from'} ${email}. New active bonus: <b style="color:#a78bfa;">${newBonus}</b> for ${monthKey}.`,
+          '#22c55e'
+        );
+
+        // Clear form
+        document.getElementById('grant-amount').value = '';
+        document.getElementById('grant-reason').value = '';
+
+        // Refresh history and lookup
+        await loadGrantHistory();
+        await lookupUser();
+      } catch (e) {
+        setGrantResult(`❌ Error: ${e.message || String(e)}`, '#ef4444');
+      }
+    }
+    window.grantCredits = grantCredits;
+
+    async function resetUserBonus() {
+      const email = document.getElementById('grant-email').value.trim().toLowerCase();
+      if (!email) { setGrantResult('⚠ Email required', '#ef4444'); return; }
+
+      if (!confirm(`Reset bonus credits to 0 for ${email}?\n\nThis is the same as granting -current_bonus.\nWill be logged in audit trail.`)) return;
+
+      try {
+        const { data: profile } = await sb
+          .from('profiles')
+          .select('id, email, plan, bonus_credits, bonus_credits_month')
+          .ilike('email', email)
+          .single();
+
+        if (!profile) { setGrantResult(`❌ User not found`, '#ef4444'); return; }
+
+        const monthKey = currentMonthKey();
+        const currentBonus = profile.bonus_credits_month === monthKey ? (profile.bonus_credits || 0) : 0;
+
+        const { data: { session } } = await sb.auth.getSession();
+        const adminEmail = session?.user?.email || 'unknown';
+
+        await sb.from('profiles').update({ bonus_credits: 0, bonus_credits_month: monthKey }).eq('id', profile.id);
+        await sb.from('credit_grants').insert({
+          user_id: profile.id,
+          granted_by_email: adminEmail,
+          amount: -currentBonus,
+          reason: '[RESET TO ZERO]',
+          user_email_at_time: profile.email,
+          user_plan_at_time: profile.plan || 'free',
+        });
+
+        setGrantResult(`✓ Reset bonus to 0 for ${email} (was ${currentBonus})`, '#22c55e');
+        await loadGrantHistory();
+        await lookupUser();
+      } catch (e) {
+        setGrantResult(`❌ Error: ${e.message}`, '#ef4444');
+      }
+    }
+    window.resetUserBonus = resetUserBonus;
+
+    async function loadGrantHistory() {
+      const el = document.getElementById('grant-history');
+      if (!el) return;
+      el.innerHTML = '<div class="loading">Loading…</div>';
+
+      try {
+        const { data: grants, error } = await sb
+          .from('credit_grants')
+          .select('*')
+          .order('granted_at', { ascending: false })
+          .limit(30);
+
+        if (error) {
+          el.innerHTML = `<div class="empty">Could not load history: ${escapeHtml(error.message)}<br><small>Did you run the migration SQL?</small></div>`;
+          return;
+        }
+
+        if (!grants || grants.length === 0) {
+          el.innerHTML = '<div class="empty">No grants yet. Use the form above to grant credits.</div>';
+          return;
+        }
+
+        let html = '<table><thead><tr><th>Date</th><th>User</th><th>Plan</th><th>Amount</th><th>Reason</th><th>Granted By</th></tr></thead><tbody>';
+        grants.forEach(g => {
+          const amtColor = g.amount > 0 ? '#22c55e' : g.amount < 0 ? '#ef4444' : '#8b949e';
+          const amtSign = g.amount > 0 ? '+' : '';
+          html += `<tr>
+            <td style="font-size:11px;color:#8b949e;">${new Date(g.granted_at).toLocaleString()}</td>
+            <td style="font-size:11px;">${escapeHtml(g.user_email_at_time || '')}</td>
+            <td><span class="pill ${g.user_plan_at_time || 'free'}">${(g.user_plan_at_time || 'free').toUpperCase()}</span></td>
+            <td style="color:${amtColor};font-weight:700;font-family:DM Mono,monospace;">${amtSign}${g.amount}</td>
+            <td style="font-size:11px;max-width:280px;color:#c9d1d9;">${escapeHtml(g.reason || '—')}</td>
+            <td style="font-size:11px;color:#8b949e;">${escapeHtml(g.granted_by_email || '—')}</td>
+          </tr>`;
+        });
+        html += '</tbody></table>';
+        el.innerHTML = html;
+      } catch (e) {
+        el.innerHTML = `<div class="empty">Error: ${escapeHtml(e.message)}</div>`;
+      }
+    }
+    window.loadGrantHistory = loadGrantHistory;
+
+    // Auto-load grant history when dashboard appears
+    const _origShowDashboard = showDashboard;
+    showDashboard = async function(email, userId) {
+      await _origShowDashboard(email, userId);
+      try { await loadGrantHistory(); } catch(e) { console.warn('Grant history load failed:', e); }
+    };
 
     // Auto-login if already signed in
     (async () => {
