@@ -112,20 +112,16 @@ export default async function handler(req, res) {
         // Fallback: find user by customer ID if metadata is missing
         if (!userId) userId = await findUserByCustomer(sub.customer);
 
-        const planMeta = sub.metadata?.plan;
         const isActive = sub.status === 'active' || sub.status === 'trialing';
 
         if (userId) {
-          // CRITICAL FIX: Read plan from metadata, don't hardcode 'pro'
-          // If subscription is being cancelled or past_due, downgrade to free
-          // If subscription is active, use the plan tier from metadata
+          // Determine plan tier from PRICE ID first (authoritative — never stale)
+          // Only fall back to metadata if we can't match the price ID
           let planValue;
           if (!isActive) {
             planValue = 'free';
-          } else if (planMeta) {
-            planValue = mapPlanToTier(planMeta);
           } else {
-            // No metadata available — try to derive from price ID
+            // PRIMARY: Match against current price IDs (authoritative source of truth)
             const priceId = sub.items?.data?.[0]?.price?.id;
             if (priceId === process.env.STRIPE_PRICE_PROPLUS_MONTHLY ||
                 priceId === process.env.STRIPE_PRICE_PROPLUS_YEARLY) {
@@ -133,8 +129,20 @@ export default async function handler(req, res) {
             } else if (priceId === process.env.STRIPE_PRICE_BUSINESS_MONTHLY ||
                        priceId === process.env.STRIPE_PRICE_BUSINESS_YEARLY) {
               planValue = 'business';
-            } else {
+            } else if (priceId === process.env.STRIPE_PRICE_MONTHLY ||
+                       priceId === process.env.STRIPE_PRICE_YEARLY) {
               planValue = 'pro';
+            } else {
+              // FALLBACK: price ID didn't match any known env var
+              // Try metadata as last resort
+              const planMeta = sub.metadata?.plan;
+              if (planMeta) {
+                planValue = mapPlanToTier(planMeta);
+                console.warn(`⚠ Unknown price ID ${priceId}, falling back to metadata plan="${planMeta}" → ${planValue}`);
+              } else {
+                planValue = 'pro';
+                console.warn(`⚠ Unknown price ID ${priceId} AND no metadata. Defaulting to 'pro'.`);
+              }
             }
           }
 
@@ -145,7 +153,7 @@ export default async function handler(req, res) {
               stripe_subscription_status: sub.status,
             })
             .eq('id', userId);
-          console.log(`✓ customer.subscription.updated: User ${userId} → plan=${planValue}, status=${sub.status}, planMeta="${planMeta}"`);
+          console.log(`✓ customer.subscription.updated: User ${userId} → plan=${planValue}, status=${sub.status}, priceId=${sub.items?.data?.[0]?.price?.id}`);
         } else {
           console.warn(`⚠ customer.subscription.updated: No user found for customer ${sub.customer}`);
         }
