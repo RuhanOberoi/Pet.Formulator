@@ -6,14 +6,14 @@
 //  Setup checklist:
 //  1. Sign up at https://stripe.com → get your API keys
 //  2. Create products in Stripe Dashboard → Products:
-//     - "PetForm Pro Monthly" — $14/month (recurring)
-//     - "PetForm Pro Yearly"  — $140/year (recurring)
+//     - "PetForm Pro Monthly"  — $14/month (recurring)
+//     - "PetForm Pro+ Monthly" — $29/month (recurring)
 //     Each product gives you a "Price ID" like price_1Abc...
 //  3. Add these env vars to Vercel (Settings → Environment Variables):
-//     STRIPE_SECRET_KEY        = sk_test_xxxxx (from Stripe API keys page)
-//     STRIPE_PRICE_MONTHLY     = price_xxxxx (your monthly price ID)
-//     STRIPE_PRICE_YEARLY      = price_xxxxx (your yearly price ID)
-//     STRIPE_WEBHOOK_SECRET    = whsec_xxxxx (set after Step 4 — see stripe-webhook.js)
+//     STRIPE_SECRET_KEY            = sk_test_xxxxx (from Stripe API keys page)
+//     STRIPE_PRICE_MONTHLY         = price_xxxxx (your Pro monthly price ID)
+//     STRIPE_PRICE_PROPLUS_MONTHLY = price_xxxxx (your Pro+ monthly price ID)
+//     STRIPE_WEBHOOK_SECRET        = whsec_xxxxx (set after Step 4 — see stripe-webhook.js)
 //  4. Install stripe in your project: in package.json (or create one), add:
 //     { "dependencies": { "stripe": "^14.0.0" } }
 //     Then redeploy on Vercel — it auto-installs.
@@ -44,20 +44,22 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing email or userId' });
     }
 
-    // Determine price ID based on selected plan
+    // Determine price ID based on selected plan (monthly only for simplicity)
     let priceId;
     if (plan === 'proplus') {
       priceId = process.env.STRIPE_PRICE_PROPLUS_MONTHLY;
-    } else if (plan === 'yearly_proplus') {
-      priceId = process.env.STRIPE_PRICE_PROPLUS_YEARLY;
-    } else if (plan === 'yearly') {
-      priceId = process.env.STRIPE_PRICE_YEARLY;
-    } else {
+    } else if (plan === 'monthly' || !plan) {
       priceId = process.env.STRIPE_PRICE_MONTHLY;
+    } else {
+      // Reject unknown plans — keeps API surface tight
+      return res.status(400).json({
+        error: 'invalid_plan',
+        message: `Unknown plan: "${plan}". Supported plans: "monthly" (Pro), "proplus" (Pro+).`,
+      });
     }
 
     if (!priceId) {
-      return res.status(500).json({ error: `STRIPE_PRICE_${plan.toUpperCase()} not configured. Please set this env var in Vercel.` });
+      return res.status(500).json({ error: `Price ID not configured for plan "${plan}". Please set the appropriate env var in Vercel.` });
     }
 
     // Create or retrieve customer
@@ -73,7 +75,59 @@ export default async function handler(req, res) {
       customerId = customer.id;
     }
 
-    // Create checkout session
+    // ─── CHECK FOR EXISTING ACTIVE SUBSCRIPTION ───
+    // If the user already has an active subscription, we should UPGRADE/CHANGE it
+    // instead of creating a new checkout (which would fail or charge twice).
+    const existingSubs = await stripe.subscriptions.list({
+      customer: customerId,
+      status: 'active',
+      limit: 1,
+    });
+
+    if (existingSubs.data.length > 0) {
+      const existingSub = existingSubs.data[0];
+      const currentPriceId = existingSub.items.data[0].price.id;
+
+      // If they're already on this exact plan — nothing to do
+      if (currentPriceId === priceId) {
+        return res.status(400).json({
+          error: 'already_on_plan',
+          message: "You're already subscribed to this plan.",
+        });
+      }
+
+      // ─── UPGRADE/CHANGE FLOW: Update the existing subscription ───
+      // Stripe automatically prorates the difference.
+      try {
+        const updatedSub = await stripe.subscriptions.update(existingSub.id, {
+          items: [{
+            id: existingSub.items.data[0].id,
+            price: priceId,
+          }],
+          proration_behavior: 'create_prorations',  // prorate the cost
+          metadata: { userId, plan },  // Update metadata so webhook fires with correct plan
+        });
+
+        console.log(`✓ Subscription updated: ${existingSub.id} → ${plan} (${priceId})`);
+
+        // Return a success URL so frontend redirects appropriately
+        // The customer.subscription.updated webhook will fire and update their plan in Supabase
+        return res.status(200).json({
+          url: `${req.headers.origin}/?upgrade=success&type=change`,
+          subscription_updated: true,
+          subscription_id: updatedSub.id,
+          new_plan: plan,
+        });
+      } catch (upgradeErr) {
+        console.error('Subscription update failed:', upgradeErr);
+        return res.status(500).json({
+          error: 'upgrade_failed',
+          message: `Could not update subscription: ${upgradeErr.message}. Please try managing your subscription via the billing portal.`,
+        });
+      }
+    }
+
+    // ─── NEW SUBSCRIPTION FLOW: Create a fresh checkout session ───
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       payment_method_types: ['card'],
